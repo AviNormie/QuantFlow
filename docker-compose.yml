@@ -1,0 +1,140 @@
+# StockFlow — full stack (infra + Go microservices)
+#
+# Start:  docker compose up --build
+# Stop:   docker compose down
+# Logs:   docker compose logs -f
+#
+# Docker networking: use service names (postgres, redis, api-gateway, …)
+# not localhost, when connecting from inside containers.
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-stockflow}:${POSTGRES_PASSWORD:-stockflow}@postgres:5432/${POSTGRES_DB:-stockflow}?sslmode=disable
+  REDIS_URL: redis://redis:6379
+  GIN_MODE: release
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: stockflow-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stockflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockflow}
+      POSTGRES_DB: ${POSTGRES_DB:-stockflow}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - stockflow-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockflow} -d ${POSTGRES_DB:-stockflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: stockflow-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - stockflow-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+    container_name: stockflow-api-gateway
+    restart: unless-stopped
+    ports:
+      - "${API_GATEWAY_PORT:-8080}:8080"
+    environment:
+      <<: *backend-env
+      PORT: "8080"
+      SERVICE_NAME: api-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockflow-network
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+    container_name: stockflow-auth-service
+    restart: unless-stopped
+    ports:
+      - "${AUTH_SERVICE_PORT:-8084}:8084"
+    environment:
+      <<: *backend-env
+      PORT: "8084"
+      SERVICE_NAME: auth-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockflow-network
+
+  market-service:
+    build:
+      context: ./backend/market-service
+    container_name: stockflow-market-service
+    restart: unless-stopped
+    ports:
+      - "${MARKET_SERVICE_PORT:-8082}:8082"
+    environment:
+      <<: *backend-env
+      PORT: "8082"
+      SERVICE_NAME: market-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockflow-network
+
+  websocket-service:
+    build:
+      context: ./backend/websocket-service
+    container_name: stockflow-websocket-service
+    restart: unless-stopped
+    ports:
+      - "${WEBSOCKET_SERVICE_PORT:-8083}:8083"
+    environment:
+      <<: *backend-env
+      PORT: "8083"
+      SERVICE_NAME: websocket-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockflow-network
+
+networks:
+  stockflow-network:
+    name: stockflow-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: stockflow-postgres-data
+  redis_data:
+    name: stockflow-redis-data
