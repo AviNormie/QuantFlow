@@ -1,8 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "installCommand": "cd stockflow && yarn install --frozen-lockfile",
-  "buildCommand": "cd stockflow && yarn build",
-  "devCommand": "cd stockflow && yarn dev --port $PORT",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- stockflow/"
-}
