@@ -1,19 +1,31 @@
 # StockFlow — Monitoring Setup (Sentry + PostHog)
 
-This guide covers every environment variable and external configuration needed to enable **Sentry** (error tracking) and **PostHog** (product analytics) across all Go microservices.
+This guide covers every environment variable and external configuration needed to enable **Sentry** (error tracking) and **PostHog** (product analytics) across:
 
-Monitoring is implemented in `backend/shared/monitoring/` and wired into:
+- **Next.js frontend** — `stockflow/` (`@sentry/nextjs`, org: `quantflow`, project: `quantflow`)
+- **Go microservices** — `backend/shared/monitoring/`
 
-- `api-gateway`
-- `auth-service`
-- `market-service`
-- `websocket-service`
-
-If monitoring env vars are **not set**, services start normally with monitoring disabled.
+If monitoring env vars are **not set**, apps start normally with monitoring disabled.
 
 ---
 
 ## Quick start
+
+### Next.js (`stockflow/`)
+
+```bash
+cd stockflow
+cp .env.example .env.local
+yarn dev
+```
+
+PostHog is initialized in `src/instrumentation-client.ts` (client) and `src/lib/posthog/server.ts` (server).
+
+```bash
+npx -y @posthog/wizard@latest   # run in interactive terminal for full wizard setup
+```
+
+### Go backend + Docker Compose
 
 ```bash
 # 1. Copy the env template
@@ -46,7 +58,7 @@ go run ./cmd
 
 \*At least one should be set to enable monitoring. Both can be used together.
 
-### Sentry variables
+### Sentry variables — Go microservices
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -55,12 +67,41 @@ go run ./cmd
 | `SENTRY_RELEASE` | No | *(empty)* | Release/version tag, e.g. `stockflow@1.0.0` or git SHA |
 | `SENTRY_TRACES_SAMPLE_RATE` | No | `0.2` | Performance trace sampling rate between `0.0` and `1.0` |
 
-### PostHog variables
+### Sentry variables — Next.js (`stockflow/`)
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `POSTHOG_API_KEY` | No | *(empty)* | **Project API Key** from PostHog → **Project Settings** |
+| `NEXT_PUBLIC_SENTRY_DSN` | Yes* | *(empty)* | Client-side DSN (browser). Same value as `SENTRY_DSN`. |
+| `SENTRY_DSN` | No | *(empty)* | Server-side DSN. Usually same as `NEXT_PUBLIC_SENTRY_DSN`. |
+| `SENTRY_ORG` | No | `quantflow` | Sentry org slug (used for source map uploads) |
+| `SENTRY_PROJECT` | No | `quantflow` | Sentry project slug |
+| `SENTRY_AUTH_TOKEN` | No | *(empty)* | Auth token for source map uploads (build/CI only — **secret**) |
+| `SENTRY_ENVIRONMENT` | No | `development` | Environment label |
+| `SENTRY_TRACES_SAMPLE_RATE` | No | `1.0` dev / `0.1` prod | Trace sampling (set in `.env.local`) |
+
+\*Required to enable Sentry in the browser.
+
+**Get your DSN:** [sentry.io](https://sentry.io) → org **quantflow** → project **quantflow** → **Settings → Client Keys (DSN)**
+
+**Source maps (optional):** Sentry → **Settings → Auth Tokens** → create token with `project:releases` → set `SENTRY_AUTH_TOKEN`
+
+**Tunnel route:** Browser events route through `/monitoring` to avoid ad blockers (configured in `next.config.ts`).
+
+### PostHog variables — Go microservices
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `POSTHOG_API_KEY` | No | *(empty)* | **Project API Key** (`phc_...`) from PostHog → **Project Settings** |
 | `POSTHOG_HOST` | No | `https://us.i.posthog.com` | Ingest URL for your PostHog region |
+
+### PostHog variables — Next.js (`stockflow/`)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | Yes* | *(empty)* | Same **Project API Key** (`phc_...`) — exposed to browser |
+| `NEXT_PUBLIC_POSTHOG_HOST` | No | `https://us.i.posthog.com` | PostHog ingest host |
+| `POSTHOG_API_KEY` | No | *(empty)* | Server-side events via `posthog-node` (defaults to project token) |
+| `POSTHOG_HOST` | No | `https://us.i.posthog.com` | Server-side ingest host |
 
 **PostHog host by region**
 

@@ -61,8 +61,10 @@ All services use `shared/monitoring` for error tracking and analytics. Integrati
 | `SENTRY_ENVIRONMENT` | No | e.g. `development`, `staging`, `production` (default: `development`) |
 | `SENTRY_RELEASE` | No | Release/version tag shown in Sentry (e.g. `stockflow@1.0.0`) |
 | `SENTRY_TRACES_SAMPLE_RATE` | No | Performance trace sampling `0.0`–`1.0` (default: `0.2`) |
-| `POSTHOG_API_KEY` | No | PostHog project API key. Empty = PostHog disabled. |
+| `POSTHOG_API_KEY` | No | PostHog project API key (`phc_...`). Empty = PostHog disabled. |
 | `POSTHOG_HOST` | No | PostHog ingest URL (default: `https://us.i.posthog.com`) |
+| `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | No | Next.js client PostHog key (same `phc_...` token) |
+| `NEXT_PUBLIC_POSTHOG_HOST` | No | Next.js client PostHog host |
 
 **What gets captured automatically**
 
