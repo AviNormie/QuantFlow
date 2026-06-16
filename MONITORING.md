@@ -1,0 +1,250 @@
+# StockFlow — Monitoring Setup (Sentry + PostHog)
+
+This guide covers every environment variable and external configuration needed to enable **Sentry** (error tracking) and **PostHog** (product analytics) across all Go microservices.
+
+Monitoring is implemented in `backend/shared/monitoring/` and wired into:
+
+- `api-gateway`
+- `auth-service`
+- `market-service`
+- `websocket-service`
+
+If monitoring env vars are **not set**, services start normally with monitoring disabled.
+
+---
+
+## Quick start
+
+```bash
+# 1. Copy the env template
+cp .env.example .env
+
+# 2. Fill in Sentry + PostHog values (see sections below)
+
+# 3. Start the stack
+docker compose up --build
+```
+
+For local `go run` (without Docker):
+
+```bash
+cd backend/auth-service
+set -a && source .env.local && set +a
+go run ./cmd
+```
+
+---
+
+## Environment variables
+
+### Required for monitoring (at least one)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SENTRY_DSN` | No* | Sentry Data Source Name. Enables error tracking when set. |
+| `POSTHOG_API_KEY` | No* | PostHog project API key. Enables analytics when set. |
+
+\*At least one should be set to enable monitoring. Both can be used together.
+
+### Sentry variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SENTRY_DSN` | No | *(empty)* | DSN from Sentry → **Settings → Client Keys (DSN)** |
+| `SENTRY_ENVIRONMENT` | No | `development` | Environment label: `development`, `staging`, `production` |
+| `SENTRY_RELEASE` | No | *(empty)* | Release/version tag, e.g. `stockflow@1.0.0` or git SHA |
+| `SENTRY_TRACES_SAMPLE_RATE` | No | `0.2` | Performance trace sampling rate between `0.0` and `1.0` |
+
+### PostHog variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `POSTHOG_API_KEY` | No | *(empty)* | **Project API Key** from PostHog → **Project Settings** |
+| `POSTHOG_HOST` | No | `https://us.i.posthog.com` | Ingest URL for your PostHog region |
+
+**PostHog host by region**
+
+| Region | `POSTHOG_HOST` |
+|--------|----------------|
+| US (default) | `https://us.i.posthog.com` |
+| EU | `https://eu.i.posthog.com` |
+
+### Service identity (already used by all services)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SERVICE_NAME` | Yes | Identifies the service in logs and monitoring (`api-gateway`, `auth-service`, etc.) |
+
+---
+
+## Example `.env` (repo root — Docker Compose)
+
+Create this file at the project root:
+
+```bash
+cp .env.example .env
+```
+
+```env
+# Sentry
+SENTRY_DSN=https://YOUR_KEY@oYOUR_ORG.ingest.sentry.io/YOUR_PROJECT
+SENTRY_ENVIRONMENT=development
+SENTRY_RELEASE=stockflow@local
+SENTRY_TRACES_SAMPLE_RATE=0.2
+
+# PostHog
+POSTHOG_API_KEY=phc_your_project_api_key_here
+POSTHOG_HOST=https://us.i.posthog.com
+```
+
+Docker Compose reads the root `.env` and passes these values to every Go service via `docker-compose.yml`.
+
+---
+
+## Example `.env.local` (per service — local `go run`)
+
+For each service under `backend/<service>/.env.local`:
+
+```env
+PORT=8084
+SERVICE_NAME=auth-service
+
+SENTRY_DSN=https://YOUR_KEY@oYOUR_ORG.ingest.sentry.io/YOUR_PROJECT
+SENTRY_ENVIRONMENT=development
+SENTRY_RELEASE=stockflow@local
+SENTRY_TRACES_SAMPLE_RATE=0.2
+
+POSTHOG_API_KEY=phc_your_project_api_key_here
+POSTHOG_HOST=https://us.i.posthog.com
+```
+
+Load before running:
+
+```bash
+set -a && source .env.local && set +a
+go run ./cmd
+```
+
+---
+
+## External setup
+
+### Sentry (one-time)
+
+1. Go to [https://sentry.io](https://sentry.io) and create an account.
+2. Create a new **Project** → choose **Go** as the platform.
+3. Open **Settings → Client Keys (DSN)** and copy the DSN.
+4. Paste it into `SENTRY_DSN` in your `.env` or `.env.local`.
+
+**Recommended settings**
+
+| Setting | Recommendation |
+|---------|----------------|
+| Environment | Use `development` locally, `production` in prod |
+| Release | Set `SENTRY_RELEASE` to your git tag or commit SHA in CI |
+| Traces | Start with `0.2` (20% sampling); increase in prod if needed |
+
+**Optional:** Use one Sentry project for all services (differentiated by `SERVICE_NAME`) or create a separate Sentry project per microservice with different DSNs.
+
+### PostHog (one-time)
+
+1. Go to [https://posthog.com](https://posthog.com) and create an account.
+2. Create a **Project**.
+3. Open **Project Settings** and copy the **Project API Key** (`phc_...`).
+   - Use the **Project API Key**, not a personal API key.
+4. Set `POSTHOG_API_KEY` in your `.env` or `.env.local`.
+5. Set `POSTHOG_HOST` to match your cloud region (US or EU).
+
+---
+
+## What is captured automatically
+
+| Tool | Event | When |
+|------|-------|------|
+| **Sentry** | Errors & panics | Unhandled exceptions via Gin middleware |
+| **Sentry** | Performance traces | Sampled HTTP requests (`SENTRY_TRACES_SAMPLE_RATE`) |
+| **PostHog** | `api_request` | Every HTTP request except `/health` (method, path, status, duration) |
+
+---
+
+## Manual capture in code
+
+Inject or pass the monitoring client from `main` into handlers/services:
+
+```go
+// Report an error
+mon.CaptureError(err, map[string]string{
+    "handler": "Register",
+    "email":   email,
+})
+
+// Track a custom event
+mon.CaptureEvent(userID, "user_registered", map[string]any{
+    "plan": "free",
+})
+```
+
+---
+
+## Verify monitoring is working
+
+### 1. Start the stack
+
+```bash
+docker compose up --build
+```
+
+### 2. Trigger a request (PostHog)
+
+```bash
+curl http://localhost:8080/health   # ignored by PostHog
+curl http://localhost:8084/health   # auth-service health
+```
+
+Check **PostHog → Activity** for `api_request` events tagged with `service`.
+
+### 3. Trigger a test error (Sentry)
+
+Temporarily add a test route or cause a panic in dev, then check **Sentry → Issues**.
+
+---
+
+## Docker Compose reference
+
+These variables are defined in `docker-compose.yml` under `x-backend-env` and shared by all Go services:
+
+```yaml
+SENTRY_DSN: ${SENTRY_DSN:-}
+SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
+SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.2}
+POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+POSTHOG_HOST: ${POSTHOG_HOST:-https://us.i.posthog.com}
+```
+
+Each service also receives `SERVICE_NAME` individually.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| No events in PostHog | Confirm `POSTHOG_API_KEY` is the **project** key; check `POSTHOG_HOST` region |
+| No errors in Sentry | Confirm `SENTRY_DSN` is correct; trigger a non-health request that errors |
+| Monitoring works in Docker but not locally | Export vars: `set -a && source .env.local && set +a` before `go run` |
+| Services fail to start after adding keys | Check for typos; invalid `SENTRY_TRACES_SAMPLE_RATE` must be `0.0`–`1.0` |
+| Too many PostHog events | `/health` is already excluded; adjust middleware in `shared/monitoring/` if needed |
+
+---
+
+## File reference
+
+| File | Purpose |
+|------|---------|
+| `.env.example` | Template with all env vars |
+| `.env` | Your local secrets (git-ignored) — used by Docker Compose |
+| `backend/<service>/.env.local` | Per-service local overrides (git-ignored) |
+| `backend/shared/monitoring/monitoring.go` | Shared Sentry + PostHog initialization |
+| `docker-compose.yml` | Passes monitoring env to all Go containers |
+| `backend/README.md` | General backend run guide |

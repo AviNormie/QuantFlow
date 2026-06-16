@@ -42,7 +42,7 @@ Each runnable service follows the same structure:
 └── go.sum
 ```
 
-`shared/` is a separate Go module for shared libraries (no HTTP server).
+`shared/` is a separate Go module for shared libraries (no HTTP server). See [`../MONITORING.md`](../MONITORING.md) for Sentry and PostHog setup.
 
 ## Environment variables
 
@@ -50,6 +50,43 @@ Each runnable service follows the same structure:
 |----------------|--------------------------------------|
 | `PORT`         | HTTP listen port                     |
 | `SERVICE_NAME` | Service identifier (in `.env.local`) |
+
+### Monitoring (Sentry + PostHog)
+
+All services use `shared/monitoring` for error tracking and analytics. Integrations are **optional** — if env vars are missing, the service starts normally without them.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SENTRY_DSN` | No | Sentry project DSN. Empty = Sentry disabled. |
+| `SENTRY_ENVIRONMENT` | No | e.g. `development`, `staging`, `production` (default: `development`) |
+| `SENTRY_RELEASE` | No | Release/version tag shown in Sentry (e.g. `stockflow@1.0.0`) |
+| `SENTRY_TRACES_SAMPLE_RATE` | No | Performance trace sampling `0.0`–`1.0` (default: `0.2`) |
+| `POSTHOG_API_KEY` | No | PostHog project API key. Empty = PostHog disabled. |
+| `POSTHOG_HOST` | No | PostHog ingest URL (default: `https://us.i.posthog.com`) |
+
+**What gets captured automatically**
+
+- **Sentry:** unhandled panics and errors via Gin middleware
+- **PostHog:** `api_request` events (method, path, status, duration) — `/health` is excluded
+
+**Manual capture in handlers/services**
+
+```go
+mon.CaptureError(err, map[string]string{"handler": "Register"})
+mon.CaptureEvent(userID, "user_registered", map[string]any{"email": email})
+```
+
+**Sentry setup**
+
+1. Create a project at [sentry.io](https://sentry.io) (platform: Go)
+2. Copy the **DSN** from *Settings → Client Keys*
+3. Set `SENTRY_DSN` in repo root `.env` (Docker Compose) or service `.env.local` (local `go run`)
+
+**PostHog setup**
+
+1. Create a project at [posthog.com](https://posthog.com)
+2. Copy **Project API Key** from *Project Settings*
+3. Set `POSTHOG_API_KEY` and `POSTHOG_HOST` (`https://us.i.posthog.com` or `https://eu.i.posthog.com`)
 
 Per-service defaults are in each `.env.local`:
 

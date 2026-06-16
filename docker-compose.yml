@@ -11,6 +11,12 @@ x-backend-env: &backend-env
   DATABASE_URL: postgres://${POSTGRES_USER:-stockflow}:${POSTGRES_PASSWORD:-stockflow}@postgres:5432/${POSTGRES_DB:-stockflow}?sslmode=disable
   REDIS_URL: redis://redis:6379
   GIN_MODE: release
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
+  SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.2}
+  POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+  POSTHOG_HOST: ${POSTHOG_HOST:-https://us.i.posthog.com}
 
 services:
   postgres:
@@ -54,7 +60,8 @@ services:
 
   api-gateway:
     build:
-      context: ./backend/api-gateway
+      context: ./backend
+      dockerfile: api-gateway/Dockerfile
     container_name: stockflow-api-gateway
     restart: unless-stopped
     ports:
@@ -73,7 +80,8 @@ services:
 
   auth-service:
     build:
-      context: ./backend/auth-service
+      context: ./backend
+      dockerfile: auth-service/Dockerfile
     container_name: stockflow-auth-service
     restart: unless-stopped
     ports:
@@ -92,7 +100,8 @@ services:
 
   market-service:
     build:
-      context: ./backend/market-service
+      context: ./backend
+      dockerfile: market-service/Dockerfile
     container_name: stockflow-market-service
     restart: unless-stopped
     ports:
@@ -111,7 +120,8 @@ services:
 
   websocket-service:
     build:
-      context: ./backend/websocket-service
+      context: ./backend
+      dockerfile: websocket-service/Dockerfile
     container_name: stockflow-websocket-service
     restart: unless-stopped
     ports:

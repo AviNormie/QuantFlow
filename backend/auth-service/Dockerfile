@@ -2,10 +2,15 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
+COPY shared/go.mod shared/go.sum ./shared/
+COPY auth-service/go.mod auth-service/go.sum ./auth-service/
+
+WORKDIR /app/auth-service
 RUN go mod download
 
-COPY . .
+COPY shared/ /app/shared/
+COPY auth-service/ .
+
 RUN CGO_ENABLED=0 go build -o /server ./cmd
 
 FROM alpine:3.21
