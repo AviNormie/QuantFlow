@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StockFlow Frontend
 
-## Getting Started
+Next.js app for live market charts, signup/signin, and API documentation.
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 20+
+- Yarn (or npm)
+- Running backend: API gateway (`8080`), auth-service (`8084`), websocket-service (`8083`)
+- PostgreSQL with the `users` table migrated (see [backend README](../backend/README.md))
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd stockflow
+cp .env.example .env.local
+# Edit .env.local — set FINNHUB_API_KEY for market quotes (Next.js API routes)
+yarn install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | API gateway base URL (default `http://localhost:8080`) |
+| `NEXT_PUBLIC_WEBSOCKET_URL` | WebSocket service URL (default `ws://localhost:8083`) |
+| `FINNHUB_API_KEY` | Finnhub API key for quote/candle routes (server-side only) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run locally
 
-## Learn More
+**Terminal 1 — backend (from repo root):**
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+docker compose up -d postgres redis
+# Run users migration once (see backend/README.md)
+cd backend/auth-service && set -a && source .env.local && set +a && go run ./cmd
+cd backend/api-gateway && go run ./cmd
+cd backend/websocket-service && set -a && source .env.local && set +a && go run ./cmd
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Terminal 2 — frontend:**
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+cd stockflow
+yarn dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Signup / login flow
+
+1. Go to [http://localhost:3000/signup](http://localhost:3000/signup) and create an account (email + password, min 8 chars).
+2. The frontend calls `POST http://localhost:8080/api/auth/register` via the API gateway.
+3. JWT access and refresh tokens are stored in `localStorage`.
+4. Sign in at [http://localhost:3000/login](http://localhost:3000/login) — calls `POST /api/auth/login`.
+5. `/charts` requires authentication; unauthenticated users are redirected to `/login`.
+
+## API gateway URLs
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `http://localhost:8080/health` | GET | Gateway health |
+| `http://localhost:8080/api/auth/register` | POST | Create account |
+| `http://localhost:8080/api/auth/login` | POST | Sign in |
+| `http://localhost:8080/api/market/quote?symbol=AAPL` | GET | Stock quote (proxied to Next.js) |
+| `http://localhost:8080/api/market/candles?symbol=AAPL` | GET | OHLCV candles (proxied to Next.js) |
+| `ws://localhost:8083/ws?symbol=AAPL` | WebSocket | Live prices (direct to websocket-service) |
+
+Interactive API docs: [http://localhost:3000/api/docs](http://localhost:3000/api/docs)
+
+## Test signup/login with curl
+
+```bash
+# Register
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+
+# Login
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+## Build
+
+```bash
+yarn build
+yarn start
+```
 
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set `NEXT_PUBLIC_API_URL` to your deployed API gateway URL and `NEXT_PUBLIC_WEBSOCKET_URL` to your websocket-service URL. Add `https://*.vercel.app` to gateway `ALLOWED_ORIGINS`.

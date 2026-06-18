@@ -1,3 +1,4 @@
+import { getApiUrl } from "@/lib/auth";
 import type { CandleBar, CandleResolution } from "./types";
 
 type FinnhubCandleResponse = {
@@ -15,7 +16,7 @@ export async function fetchCandles(
   resolution: CandleResolution = "D",
 ): Promise<CandleBar[]> {
   const params = new URLSearchParams({ symbol, resolution });
-  const res = await fetch(`/api/market/candles?${params.toString()}`);
+  const res = await fetch(`${getApiUrl()}/api/market/candles?${params.toString()}`);
 
   if (!res.ok) {
     const body = await res.text();
@@ -40,7 +41,7 @@ export async function fetchCandles(
 
 export async function fetchQuote(symbol: string) {
   const params = new URLSearchParams({ symbol });
-  const res = await fetch(`/api/market/quote?${params.toString()}`);
+  const res = await fetch(`${getApiUrl()}/api/market/quote?${params.toString()}`);
 
   if (!res.ok) {
     throw new Error("Failed to load quote");

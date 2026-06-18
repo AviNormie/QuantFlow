@@ -2,34 +2,31 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StockFlow API",
-    "version": "0.1.0",
-    "description": "StockFlow inventory and operations API."
+    "version": "0.2.0",
+    "description": "StockFlow API gateway — auth, market data, and WebSocket live prices."
   },
   "servers": [
     {
-      "url": "/api",
-      "description": "Local API"
+      "url": "http://localhost:8080",
+      "description": "API Gateway (local)"
     }
   ],
   "paths": {
     "/health": {
       "get": {
-        "operationId": "getHealth",
-        "summary": "Health check",
-        "description": "Returns API availability status.",
+        "operationId": "getGatewayHealth",
+        "summary": "Gateway health check",
+        "tags": ["Health"],
         "responses": {
           "200": {
-            "description": "Service is healthy",
+            "description": "Gateway is healthy",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status"],
                   "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "ok"
-                    }
+                    "status": { "type": "string", "example": "ok" },
+                    "service": { "type": "string", "example": "api-gateway" }
                   }
                 }
               }
@@ -37,6 +34,198 @@
           }
         }
       }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "register",
+        "summary": "Register a new user",
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Sign in with email and password",
+        "tags": ["Auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/market/quote": {
+      "get": {
+        "operationId": "getQuote",
+        "summary": "Get stock quote",
+        "tags": ["Market"],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "example": "AAPL" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quote data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "c": { "type": "number", "description": "Current price" },
+                    "d": { "type": "number", "description": "Change" },
+                    "dp": { "type": "number", "description": "Percent change" },
+                    "h": { "type": "number" },
+                    "l": { "type": "number" },
+                    "o": { "type": "number" },
+                    "pc": { "type": "number", "description": "Previous close" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market/candles": {
+      "get": {
+        "operationId": "getCandles",
+        "summary": "Get OHLCV candle data",
+        "tags": ["Market"],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "example": "AAPL" }
+          },
+          {
+            "name": "resolution",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["1", "5", "15", "60", "D", "W"],
+              "default": "D"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Candle data (Finnhub or Yahoo fallback format)"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "user": { "$ref": "#/components/schemas/User" },
+          "access_token": { "type": "string" },
+          "refresh_token": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Invalid credentials",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Email already registered",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      }
+    }
+  },
+  "x-websocket": {
+    "description": "Live stock prices via websocket-service (not proxied through the gateway).",
+    "url": "ws://localhost:8083/ws?symbol=AAPL",
+    "parameters": {
+      "symbol": "Stock ticker symbol (required)"
     }
   }
 }

@@ -9,6 +9,10 @@ import (
 	"syscall"
 	"time"
 
+	"auth-service/internal/database"
+	"auth-service/internal/handler"
+	"auth-service/internal/repository"
+	"auth-service/internal/service"
 	"shared/monitoring"
 
 	"github.com/gin-gonic/gin"
@@ -18,11 +22,26 @@ func main() {
 	serviceName := envOr("SERVICE_NAME", "auth-service")
 	port := envOr("PORT", "8084")
 
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Fatal("JWT_SECRET is required")
+	}
+
+	ctx := context.Background()
+	pool, err := database.Connect(ctx)
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	defer database.Close()
+
 	mon, err := monitoring.Init(serviceName)
 	if err != nil {
 		log.Fatalf("monitoring init: %v", err)
 	}
 	defer mon.Close()
+
+	userRepo := repository.NewUserRepository(pool)
+	userService := service.NewUserService(userRepo)
+	authHandler := handler.NewAuthHandler(userService)
 
 	r := gin.Default()
 	mon.AttachGin(r)
@@ -30,6 +49,9 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": serviceName})
 	})
+
+	r.POST("/register", authHandler.Register)
+	r.POST("/login", authHandler.Login)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -47,10 +69,10 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("shutdown: %v", err)
 	}
 }

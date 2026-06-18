@@ -1,7 +1,7 @@
-.env
-.env.local
 !.env.example
 .DS_Store
 **/.DS_Store
 stockflow/.env.local
 stockflow/.env.sentry-build-plugin
+config.bat
+node_modules

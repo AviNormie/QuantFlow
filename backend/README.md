@@ -11,6 +11,12 @@ Go microservices for StockFlow. Each service is an independent Gin HTTP server w
 | `market-service`    | 8082         | http://localhost:8082/health          |
 | `websocket-service` | 8083         | http://localhost:8083/health          |
 
+**API gateway routes:** `/api/auth/*` → auth-service, `/api/market/*` → Next.js (`NEXTJS_URL`).
+
+**Auth endpoints (via gateway):** `POST /api/auth/register`, `POST /api/auth/login`.
+
+**WebSocket:** `ws://localhost:8083/ws?symbol=AAPL` (not proxied through gateway).
+
 Example health response:
 
 ```json
@@ -50,6 +56,12 @@ Each runnable service follows the same structure:
 |----------------|--------------------------------------|
 | `PORT`         | HTTP listen port                     |
 | `SERVICE_NAME` | Service identifier (in `.env.local`) |
+| `JWT_SECRET`   | JWT signing secret (auth-service, required) |
+| `DATABASE_URL` | PostgreSQL connection string (auth-service) |
+| `AUTH_SERVICE_URL` | Auth service URL (api-gateway, default `http://localhost:8084`) |
+| `NEXTJS_URL`   | Next.js URL for market proxy (api-gateway, default `http://localhost:3000`) |
+| `ALLOWED_ORIGINS` | CORS origins for api-gateway (comma-separated) |
+| `FINNHUB_API_KEY` | Finnhub API key (websocket-service) |
 
 ### Monitoring (Sentry + PostHog)
 
@@ -270,6 +282,16 @@ Verify:
 docker compose exec postgres psql -U stockflow -d stockflow -c "SELECT 1"
 docker compose exec redis redis-cli ping
 ```
+
+**Users table migration (auth-service)**
+
+Run once against the `stockflow` database:
+
+```bash
+docker compose exec -T postgres psql -U stockflow -d stockflow < backend/auth-service/configs/migrations/001_create_users.sql
+```
+
+Or paste `backend/auth-service/configs/migrations/001_create_users.sql` into psql.
 
 ## Running everything at once
 

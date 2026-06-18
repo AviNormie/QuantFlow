@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { isAuthenticated } from "@/lib/auth";
 import { Activity, Radio, Search, Wifi, WifiOff } from "lucide-react";
 import { TradingViewChart } from "@/components/charts/tradingview-chart";
 import { Navbar } from "@/components/layout/navbar";
@@ -17,6 +19,7 @@ import { POPULAR_SYMBOLS, type CandleResolution } from "@/lib/market/types";
 import { cn, formatChange, formatPrice } from "@/lib/utils";
 
 export default function ChartsPage() {
+  const router = useRouter();
   const [symbol, setSymbol] = useState("AAPL");
   const [input, setInput] = useState("AAPL");
   const [resolution, setResolution] = useState<CandleResolution>("D");
@@ -37,6 +40,12 @@ export default function ChartsPage() {
     () => resolutionToTradingViewInterval(resolution),
     [resolution],
   );
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      router.replace("/login");
+    }
+  }, [router]);
 
   const loadQuote = useCallback(async () => {
     setLoading(true);
@@ -216,15 +225,12 @@ export default function ChartsPage() {
                     <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
                       <p className="text-sm text-zinc-400">{error}</p>
                       <p className="max-w-md text-xs text-zinc-500">
-                        Add{" "}
+                        Ensure the API gateway (port 8080), Next.js, and
+                        websocket-service (port 8083) are running. Set{" "}
                         <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-emerald-400">
                           FINNHUB_API_KEY
                         </code>{" "}
-                        to{" "}
-                        <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-emerald-400">
-                          stockflow/.env.local
-                        </code>{" "}
-                        and run websocket-service on port 8083 for live prices.
+                        on websocket-service for live prices.
                       </p>
                       <Button size="sm" variant="outline" onClick={loadQuote}>
                         Retry

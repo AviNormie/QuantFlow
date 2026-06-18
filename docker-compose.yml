@@ -70,11 +70,16 @@ services:
       <<: *backend-env
       PORT: "8080"
       SERVICE_NAME: api-gateway
+      AUTH_SERVICE_URL: http://auth-service:8084
+      NEXTJS_URL: ${NEXTJS_URL:-http://host.docker.internal:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://*.vercel.app}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      auth-service:
+        condition: service_started
     networks:
       - stockflow-network
 
@@ -90,6 +95,7 @@ services:
       <<: *backend-env
       PORT: "8084"
       SERVICE_NAME: auth-service
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
     depends_on:
       postgres:
         condition: service_healthy
