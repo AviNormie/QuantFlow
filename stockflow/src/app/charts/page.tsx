@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useFinnhubWebSocket } from "@/hooks/use-finnhub-websocket";
+import { useStockWebSocket } from "@/hooks/use-stock-websocket";
 import { fetchQuote } from "@/lib/market/api";
 import { resolutionToTradingViewInterval } from "@/lib/market/tradingview";
 import { POPULAR_SYMBOLS, type CandleResolution } from "@/lib/market/types";
@@ -32,7 +32,7 @@ export default function ChartsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { lastTrade, status, reconnect } = useFinnhubWebSocket(symbol);
+  const { lastTrade, status, reconnect } = useStockWebSocket(symbol);
   const tradingViewInterval = useMemo(
     () => resolutionToTradingViewInterval(resolution),
     [resolution],
@@ -216,10 +216,15 @@ export default function ChartsPage() {
                     <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
                       <p className="text-sm text-zinc-400">{error}</p>
                       <p className="max-w-md text-xs text-zinc-500">
-                        Add a free Finnhub API key to{" "}
+                        Add{" "}
                         <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-emerald-400">
-                          .env.local
-                        </code>
+                          FINNHUB_API_KEY
+                        </code>{" "}
+                        to{" "}
+                        <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-emerald-400">
+                          stockflow/.env.local
+                        </code>{" "}
+                        and run websocket-service on port 8083 for live prices.
                       </p>
                       <Button size="sm" variant="outline" onClick={loadQuote}>
                         Retry

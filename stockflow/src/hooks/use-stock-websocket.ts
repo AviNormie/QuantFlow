@@ -5,32 +5,33 @@ import type { LiveTrade } from "@/lib/market/types";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 
-export function useFinnhubWebSocket(symbol: string) {
+function buildWsUrl(symbol: string) {
+  const base =
+    process.env.NEXT_PUBLIC_WEBSOCKET_URL ?? "ws://localhost:8083";
+  const url = new URL("/ws", base.endsWith("/") ? base : `${base}/`);
+  url.searchParams.set("symbol", symbol);
+  return url.toString();
+}
+
+export function useStockWebSocket(symbol: string) {
   const [lastTrade, setLastTrade] = useState<LiveTrade | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
   const symbolRef = useRef(symbol);
-  const prevSymbolRef = useRef(symbol);
 
   const connect = useCallback(() => {
-    const token = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
-    if (!token) {
-      setStatus("error");
-      return;
-    }
-
     if (wsRef.current) {
       wsRef.current.close();
     }
 
+    symbolRef.current = symbol;
     setStatus("connecting");
-    const ws = new WebSocket(`wss://ws.finnhub.io?token=${token}`);
+    setLastTrade(null);
+
+    const ws = new WebSocket(buildWsUrl(symbol));
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      setStatus("connected");
-      ws.send(JSON.stringify({ type: "subscribe", symbol: symbolRef.current }));
-    };
+    ws.onopen = () => setStatus("connected");
 
     ws.onmessage = (event) => {
       try {
@@ -62,19 +63,6 @@ export function useFinnhubWebSocket(symbol: string) {
 
     ws.onerror = () => setStatus("error");
     ws.onclose = () => setStatus("disconnected");
-  }, []);
-
-  useEffect(() => {
-    const prev = prevSymbolRef.current;
-    prevSymbolRef.current = symbol;
-    symbolRef.current = symbol;
-
-    if (wsRef.current?.readyState === WebSocket.OPEN && prev !== symbol) {
-      wsRef.current.send(JSON.stringify({ type: "unsubscribe", symbol: prev }));
-      wsRef.current.send(JSON.stringify({ type: "subscribe", symbol }));
-    }
-
-    setLastTrade(null);
   }, [symbol]);
 
   useEffect(() => {

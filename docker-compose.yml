@@ -130,6 +130,7 @@ services:
       <<: *backend-env
       PORT: "8083"
       SERVICE_NAME: websocket-service
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -5,7 +5,7 @@ import { fetchYahooCandles } from "@/lib/market/yahoo-candles";
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 
 function getToken() {
-  return process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+  return process.env.FINNHUB_API_KEY;
 }
 
 export async function GET(request: Request) {

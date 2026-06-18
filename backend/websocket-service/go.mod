@@ -41,6 +41,9 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 )
 
-require shared v0.0.0
+require (
+	github.com/gorilla/websocket v1.5.3
+	shared v0.0.0
+)
 
 replace shared => ../shared

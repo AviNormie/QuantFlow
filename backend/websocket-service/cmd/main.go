@@ -31,6 +31,8 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": serviceName})
 	})
 
+	r.GET("/ws", handlePricesWS)
+
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: r,
