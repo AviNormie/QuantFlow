@@ -1,0 +1,157 @@
+# StockFlow on Render — deploy each microservice separately (recommended).
+# Do NOT run docker-compose on Render; use managed Postgres + Redis + private services.
+#
+# Deploy: connect repo in Render Dashboard → New Blueprint → select this file.
+# Or: render blueprint launch
+#
+# After deploy, set ALLOWED_ORIGINS on api-gateway to your frontend URL(s).
+
+databases:
+  - name: stockflow-db
+    plan: free
+    databaseName: stockflow
+    user: stockflow
+
+services:
+  - type: redis
+    name: stockflow-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+  # --- Private backend services (internal network only) ---
+  - type: pserv
+    name: stockflow-auth
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./auth-service/Dockerfile
+    plan: starter
+    envVars:
+      - key: SERVICE_NAME
+        value: auth-service
+      - key: GIN_MODE
+        value: release
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockflow-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: stockflow-redis
+          property: connectionString
+
+  - type: pserv
+    name: stockflow-market
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./market-service/Dockerfile
+    plan: starter
+    envVars:
+      - key: SERVICE_NAME
+        value: market-service
+      - key: GIN_MODE
+        value: release
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: MARKET_PUBSUB_CHANNEL
+        value: market:updates
+      - key: MARKET_DEFAULT_SYMBOLS
+        value: AAPL,MSFT,GOOGL
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: stockflow-redis
+          property: connectionString
+
+  - type: web
+    name: stockflow-websocket
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./websocket-service/Dockerfile
+    plan: starter
+    envVars:
+      - key: SERVICE_NAME
+        value: websocket-service
+      - key: GIN_MODE
+        value: release
+      - key: MARKET_PUBSUB_CHANNEL
+        value: market:updates
+      - key: WS_REQUIRE_AUTH
+        value: "false"
+      - key: JWT_SECRET
+        fromService:
+          type: pserv
+          name: stockflow-auth
+          envVarKey: JWT_SECRET
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: stockflow-redis
+          property: connectionString
+
+  # --- Public API entry point ---
+  - type: web
+    name: stockflow-api-gateway
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./api-gateway/Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: SERVICE_NAME
+        value: api-gateway
+      - key: GIN_MODE
+        value: release
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: AUTH_SERVICE_URL
+        fromService:
+          type: pserv
+          name: stockflow-auth
+          property: hostport
+      - key: MARKET_SERVICE_URL
+        fromService:
+          type: pserv
+          name: stockflow-market
+          property: hostport
+      - key: WEBSOCKET_SERVICE_URL
+        fromService:
+          type: web
+          name: stockflow-websocket
+          property: hostport
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: stockflow-redis
+          property: connectionString
+
+  # --- Frontend (optional — Vercel is also fine) ---
+  - type: web
+    name: stockflow-frontend
+    runtime: node
+    rootDir: stockflow
+    buildCommand: corepack enable && pnpm install && pnpm run build
+    startCommand: pnpm start
+    plan: starter
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: stockflow-api-gateway
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: NEXT_PUBLIC_WEBSOCKET_URL
+        fromService:
+          type: web
+          name: stockflow-websocket
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SENTRY_ORG
+        sync: false
+      - key: SENTRY_PROJECT
+        sync: false
+      - key: SENTRY_AUTH_TOKEN
+        sync: false
