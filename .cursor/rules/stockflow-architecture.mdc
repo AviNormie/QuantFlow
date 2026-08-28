@@ -1,0 +1,14 @@
+---
+description: StockFlow microservices boundaries and service ownership
+alwaysApply: true
+---
+
+# StockFlow Architecture
+
+- **api-gateway**: routing, CORS, request ID, rate-limit skeleton — no business logic
+- **auth-service**: signup/login/refresh/logout/me, GORM + Postgres, Redis sessions
+- **market-service**: Finnhub ingestion, normalization, Redis cache + pub/sub, market HTTP APIs
+- **websocket-service**: client WS connections, subscriptions, Redis pub/sub fan-out — no direct Finnhub
+- **Frontend**: calls gateway for REST, websocket-service for live ticks; never holds provider keys
+
+Inspect existing code before adding features. Prefer extending over duplicating.

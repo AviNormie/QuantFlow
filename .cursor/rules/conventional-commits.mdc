@@ -1,0 +1,61 @@
+---
+description: Conventional commit format and phased commit workflow
+alwaysApply: true
+---
+
+# Conventional Commits
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) for every commit.
+
+## Format
+
+```
+<type>(<scope>): <subject>
+
+[optional body]
+```
+
+- **subject**: imperative, lowercase, no period, max ~72 chars
+- **scope**: optional but preferred (`auth`, `market`, `gateway`, `websocket`, `frontend`, `shared`, `infra`, `deploy`)
+- Never mention AI, Cursor, agents, or co-authors in messages
+
+## Types
+
+| Type | When to use |
+|------|-------------|
+| `feat` | New feature or user-facing capability |
+| `fix` | Bug fix |
+| `refactor` | Code change that is not a fix or feature |
+| `chore` | Tooling, deps, config, CI, no production logic change |
+| `docs` | Documentation only |
+| `test` | Tests only |
+| `perf` | Performance improvement |
+| `build` | Build system or Docker changes |
+| `ci` | CI/CD pipeline changes |
+
+## Examples
+
+```
+feat(auth): add refresh token rotation with Redis sessions
+fix(gateway): prepend http scheme for Render internal service URLs
+refactor(market): extract Finnhub provider behind adapter interface
+chore(infra): move FINNHUB_API_KEY to market-service in compose
+docs: add Render deployment guide
+test(auth): cover signup, refresh, and logout flows
+```
+
+## Phased commits
+
+When changes span multiple areas, split into **logical phases** — one concern per commit:
+
+1. Shared libraries / infrastructure
+2. Individual microservices (auth → market → websocket → gateway)
+3. Docker / env config
+4. Frontend integration
+5. Deployment / docs
+
+Do not squash unrelated work into one commit. Do not commit `.DS_Store` or secrets.
+
+## Push
+
+Push after each phase or after a coherent batch. Use normal `git push` — no agent attribution in messages or trailers.
