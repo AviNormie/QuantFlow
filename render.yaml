@@ -128,30 +128,4 @@ services:
           name: stockflow-redis
           property: connectionString
 
-  # --- Frontend (optional — Vercel is also fine) ---
-  - type: web
-    name: stockflow-frontend
-    runtime: node
-    rootDir: stockflow
-    buildCommand: corepack enable && pnpm install && pnpm run build
-    startCommand: pnpm start
-    plan: starter
-    envVars:
-      - key: NODE_VERSION
-        value: "22"
-      - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: stockflow-api-gateway
-          envVarKey: RENDER_EXTERNAL_URL
-      - key: NEXT_PUBLIC_WEBSOCKET_URL
-        fromService:
-          type: web
-          name: stockflow-websocket
-          envVarKey: RENDER_EXTERNAL_URL
-      - key: SENTRY_ORG
-        sync: false
-      - key: SENTRY_PROJECT
-        sync: false
-      - key: SENTRY_AUTH_TOKEN
-        sync: false
+  # Frontend runs on Vercel — do not deploy stockflow-frontend on Render.

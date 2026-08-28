@@ -80,7 +80,6 @@ SERVICES=(
   stockflow-api-gateway
   stockflow-auth
   stockflow-websocket
-  stockflow-frontend
 )
 
 echo "Looking for StockFlow services on Render..."
