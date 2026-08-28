@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -12,7 +14,10 @@ import (
 	"syscall"
 	"time"
 
+	"shared/gateway"
+	"shared/health"
 	"shared/monitoring"
+	"shared/redis"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,8 +25,14 @@ import (
 func main() {
 	serviceName := envOr("SERVICE_NAME", "api-gateway")
 	port := envOr("PORT", "8080")
-	authURL := envOr("AUTH_SERVICE_URL", "http://localhost:8084")
-	marketURL := envOr("NEXTJS_URL", "http://localhost:3000")
+	authURL := ensureHTTPURL(envOr("AUTH_SERVICE_URL", "http://localhost:8084"))
+	marketURL := ensureHTTPURL(envOr("MARKET_SERVICE_URL", "http://localhost:8082"))
+
+	ctx := context.Background()
+	if _, err := redis.Connect(ctx); err != nil {
+		log.Printf("redis connect warning: %v", err)
+	}
+	defer redis.Close()
 
 	mon, err := monitoring.Init(serviceName)
 	if err != nil {
@@ -31,11 +42,18 @@ func main() {
 
 	r := gin.Default()
 	mon.AttachGin(r)
+	r.Use(gateway.RequestIDMiddleware())
+	r.Use(gateway.TimeoutMiddleware(30 * time.Second))
+	r.Use(gateway.RateLimitMiddleware())
+	r.Use(gateway.ErrorEnvelopeMiddleware())
 	r.Use(corsMiddleware())
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": serviceName})
-	})
+	r.GET("/health", health.AliveHandler(serviceName))
+	r.GET("/ready", health.ReadyHandler(serviceName, map[string]health.Checker{
+		"redis": redis.Ping,
+		"auth":  downstreamHealthChecker(authURL + "/ready"),
+		"market": downstreamHealthChecker(marketURL + "/ready"),
+	}))
 
 	r.Any("/api/auth/*proxyPath", makePathProxy(authURL, "/api/auth"))
 	r.Any("/api/market/*proxyPath", makePathProxy(marketURL, "/api/market"))
@@ -56,11 +74,30 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("shutdown: %v", err)
+	}
+}
+
+func downstreamHealthChecker(url string) health.Checker {
+	return func(ctx context.Context) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		io.Copy(io.Discard, res.Body)
+		if res.StatusCode >= 400 {
+			return fmt.Errorf("status %d", res.StatusCode)
+		}
+		return nil
 	}
 }
 
@@ -83,6 +120,9 @@ func makePathProxy(targetBase, stripPrefix string) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		if requestID := c.GetString("request_id"); requestID != "" {
+			c.Request.Header.Set("X-Request-ID", requestID)
+		}
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 }
@@ -97,7 +137,7 @@ func corsMiddleware() gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
 		c.Header("Vary", "Origin")
 
 		if c.Request.Method == http.MethodOptions {
@@ -140,4 +180,11 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func ensureHTTPURL(raw string) string {
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	return "http://" + raw
 }
