@@ -38,24 +38,32 @@ Managed: PostgreSQL (auth) + Redis (sessions, cache, pub/sub)
 
 ## Step 1 — Deploy backend with Render Blueprint
 
-1. Push this repo to GitHub.
-2. In [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**.
-3. Connect the repo; Render reads [`render.yaml`](render.yaml).
-4. After the blueprint is created, set **manual env vars** in the dashboard:
+StockFlow is **not on Render yet** until you launch the blueprint once.
 
-| Service | Variable | Example |
-|---------|----------|---------|
-| `stockflow-market` | `FINNHUB_API_KEY` | your Finnhub key |
-| `stockflow-api-gateway` | `ALLOWED_ORIGINS` | `https://your-frontend.vercel.app` |
+1. Open [Render Blueprints](https://dashboard.render.com/blueprints)
+2. **New Blueprint Instance** → connect `AviNormie/QuantFlow` → branch `main`
+3. When prompted (`sync: false` vars), enter:
+   - `FINNHUB_API_KEY` — your Finnhub key
+   - `ALLOWED_ORIGINS` — your Vercel URL (e.g. `https://quantflow.vercel.app`)
+4. Wait for all services to become **Live**
 
-`JWT_SECRET` is auto-generated for auth and shared with websocket.
-
-5. Wait for all services to be **Live**. Verify:
+Validate locally before launching:
 
 ```bash
-curl https://stockflow-api-gateway.onrender.com/ready
-curl https://stockflow-api-gateway.onrender.com/health
+render workspace set tea-ct3m35jtq21c738tajq0
+render blueprints validate ./render.yaml
 ```
+
+### Push env vars via CLI (after blueprint exists)
+
+```bash
+cp deploy/render.manual.env.example deploy/render.manual.env
+# edit FINNHUB_API_KEY and ALLOWED_ORIGINS
+./scripts/render-sync-env.sh
+```
+
+The script sets manual env vars on Render, triggers deploys, and prints the Vercel URLs to use.
+
 
 ---
 
