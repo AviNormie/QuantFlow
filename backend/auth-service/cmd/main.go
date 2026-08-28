@@ -11,9 +11,12 @@ import (
 
 	"auth-service/internal/database"
 	"auth-service/internal/handler"
+	"auth-service/internal/middleware"
 	"auth-service/internal/repository"
 	"auth-service/internal/service"
+	"shared/health"
 	"shared/monitoring"
+	"shared/redis"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,11 +30,18 @@ func main() {
 	}
 
 	ctx := context.Background()
-	pool, err := database.Connect(ctx)
+
+	db, err := database.Connect(ctx)
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
 	defer database.Close()
+
+	redisClient, err := redis.Connect(ctx)
+	if err != nil {
+		log.Fatalf("redis: %v", err)
+	}
+	defer redis.Close()
 
 	mon, err := monitoring.Init(serviceName)
 	if err != nil {
@@ -39,19 +49,32 @@ func main() {
 	}
 	defer mon.Close()
 
-	userRepo := repository.NewUserRepository(pool)
-	userService := service.NewUserService(userRepo)
+	userRepo := repository.NewUserRepository(db)
+	sessionRepo := repository.NewSessionRepository(redisClient)
+	userService := service.NewUserService(userRepo, sessionRepo)
 	authHandler := handler.NewAuthHandler(userService)
 
 	r := gin.Default()
 	mon.AttachGin(r)
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": serviceName})
-	})
+	r.GET("/health", health.AliveHandler(serviceName))
+	r.GET("/ready", health.ReadyHandler(serviceName, map[string]health.Checker{
+		"postgres": func(ctx context.Context) error {
+			sqlDB, err := db.DB()
+			if err != nil {
+				return err
+			}
+			return sqlDB.PingContext(ctx)
+		},
+		"redis": redis.Ping,
+	}))
 
 	r.POST("/register", authHandler.Register)
+	r.POST("/signup", authHandler.Signup)
 	r.POST("/login", authHandler.Login)
+	r.POST("/refresh", authHandler.Refresh)
+	r.POST("/logout", authHandler.Logout)
+	r.GET("/me", middleware.AuthRequired(), authHandler.Me)
 
 	srv := &http.Server{
 		Addr:    ":" + port,

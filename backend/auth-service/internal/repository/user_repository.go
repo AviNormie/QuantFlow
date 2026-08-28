@@ -4,89 +4,81 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
-	"auth-service/internal/models"
+	"auth-service/internal/model"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 var ErrUserNotFound = errors.New("user not found")
 
-// UserRepository handles persistence for users.
+// UserRepository handles user persistence through GORM.
 type UserRepository struct {
-	pool *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
-	return &UserRepository{pool: pool}
+func NewUserRepository(db *gorm.DB) *UserRepository {
+	return &UserRepository{db: db}
 }
 
-// CreateUser inserts a user. Password must already be hashed; set user.Email and user.PasswordHash.
-func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) error {
-	const query = `
-		INSERT INTO users (email, password_hash)
-		VALUES ($1, $2)
-		RETURNING id, created_at, updated_at
-	`
-
-	err := r.pool.QueryRow(ctx, query, user.Email, user.PasswordHash).
-		Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
+func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error {
+	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
 		return fmt.Errorf("create user: %w", err)
 	}
-
 	return nil
 }
 
-// GetUserByEmail returns a user by email or ErrUserNotFound.
-func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	const query = `
-		SELECT id, email, password_hash, created_at, updated_at
-		FROM users
-		WHERE email = $1
-	`
-
-	user, err := r.scanUser(ctx, query, email)
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-// GetUserByID returns a user by id or ErrUserNotFound.
-func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*models.User, error) {
-	const query = `
-		SELECT id, email, password_hash, created_at, updated_at
-		FROM users
-		WHERE id = $1
-	`
-
-	user, err := r.scanUser(ctx, query, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-func (r *UserRepository) scanUser(ctx context.Context, query string, arg any) (*models.User, error) {
-	var user models.User
-
-	err := r.pool.QueryRow(ctx, query, arg).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
+func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
+	var user model.User
+	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrUserNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("query user: %w", err)
+		return nil, fmt.Errorf("query user by email: %w", err)
 	}
-
 	return &user, nil
+}
+
+func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*model.User, error) {
+	var user model.User
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query user by id: %w", err)
+	}
+	return &user, nil
+}
+
+// SessionRepository stores refresh-token sessions in Redis.
+type SessionRepository struct {
+	client *redis.Client
+}
+
+func NewSessionRepository(client *redis.Client) *SessionRepository {
+	return &SessionRepository{client: client}
+}
+
+func sessionKey(userID, tokenID string) string {
+	return fmt.Sprintf("session:%s:%s", userID, tokenID)
+}
+
+func (r *SessionRepository) StoreSession(ctx context.Context, userID, tokenID string, ttl time.Duration) error {
+	return r.client.Set(ctx, sessionKey(userID, tokenID), "1", ttl).Err()
+}
+
+func (r *SessionRepository) DeleteSession(ctx context.Context, userID, tokenID string) error {
+	return r.client.Del(ctx, sessionKey(userID, tokenID)).Err()
+}
+
+func (r *SessionRepository) SessionExists(ctx context.Context, userID, tokenID string) (bool, error) {
+	count, err := r.client.Exists(ctx, sessionKey(userID, tokenID)).Result()
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }

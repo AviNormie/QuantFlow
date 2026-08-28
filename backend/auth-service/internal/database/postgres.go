@@ -5,37 +5,51 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"auth-service/internal/model"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-// Pool is the shared PostgreSQL connection pool for auth-service.
-var Pool *pgxpool.Pool
+// DB is the shared GORM database handle for auth-service.
+var DB *gorm.DB
 
-// Connect opens a pool using DATABASE_URL from the environment.
-func Connect(ctx context.Context) (*pgxpool.Pool, error) {
+// Connect opens GORM using DATABASE_URL and runs migrations.
+func Connect(ctx context.Context) (*gorm.DB, error) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is not set")
 	}
 
-	pool, err := pgxpool.New(ctx, databaseURL)
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("connect to postgres: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("get sql db: %w", err)
+	}
+
+	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
-	Pool = pool
-	return pool, nil
+	if err := db.WithContext(ctx).AutoMigrate(&model.User{}); err != nil {
+		return nil, fmt.Errorf("auto migrate: %w", err)
+	}
+
+	DB = db
+	return db, nil
 }
 
-// Close shuts down the global pool if it was initialized.
+// Close shuts down the database pool.
 func Close() {
-	if Pool != nil {
-		Pool.Close()
-		Pool = nil
+	if DB == nil {
+		return
 	}
+	if sqlDB, err := DB.DB(); err == nil {
+		sqlDB.Close()
+	}
+	DB = nil
 }
