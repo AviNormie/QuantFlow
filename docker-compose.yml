@@ -71,7 +71,8 @@ services:
       PORT: "8080"
       SERVICE_NAME: api-gateway
       AUTH_SERVICE_URL: http://auth-service:8084
-      NEXTJS_URL: ${NEXTJS_URL:-http://host.docker.internal:3000}
+      MARKET_SERVICE_URL: http://market-service:8082
+      WEBSOCKET_SERVICE_URL: http://websocket-service:8083
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,https://*.vercel.app}
     depends_on:
       postgres:
@@ -79,6 +80,8 @@ services:
       redis:
         condition: service_healthy
       auth-service:
+        condition: service_started
+      market-service:
         condition: service_started
     networks:
       - stockflow-network
@@ -116,6 +119,9 @@ services:
       <<: *backend-env
       PORT: "8082"
       SERVICE_NAME: market-service
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      MARKET_PUBSUB_CHANNEL: ${MARKET_PUBSUB_CHANNEL:-market:updates}
+      MARKET_DEFAULT_SYMBOLS: ${MARKET_DEFAULT_SYMBOLS:-AAPL,MSFT,GOOGL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,12 +142,16 @@ services:
       <<: *backend-env
       PORT: "8083"
       SERVICE_NAME: websocket-service
-      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      MARKET_PUBSUB_CHANNEL: ${MARKET_PUBSUB_CHANNEL:-market:updates}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      WS_REQUIRE_AUTH: ${WS_REQUIRE_AUTH:-false}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      market-service:
+        condition: service_started
     networks:
       - stockflow-network
 
