@@ -9,7 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"shared/health"
 	"shared/monitoring"
+	"shared/redis"
+	"websocket-service/internal/handler"
+	"websocket-service/internal/hub"
+	"websocket-service/internal/subscriber"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,6 +22,17 @@ import (
 func main() {
 	serviceName := envOr("SERVICE_NAME", "websocket-service")
 	port := envOr("PORT", "8083")
+	pubSubChannel := envOr("MARKET_PUBSUB_CHANNEL", "market:updates")
+	requireAuth := os.Getenv("WS_REQUIRE_AUTH") == "true"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	redisClient, err := redis.Connect(ctx)
+	if err != nil {
+		log.Fatalf("redis: %v", err)
+	}
+	defer redis.Close()
 
 	mon, err := monitoring.Init(serviceName)
 	if err != nil {
@@ -24,14 +40,20 @@ func main() {
 	}
 	defer mon.Close()
 
+	h := hub.NewHub()
+	sub := subscriber.NewRedisSubscriber(redisClient, pubSubChannel, h)
+	go sub.RunWithReconnect(ctx)
+
+	wsHandler := handler.NewWSHandler(h, pubSubChannel, requireAuth)
+
 	r := gin.Default()
 	mon.AttachGin(r)
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": serviceName})
-	})
-
-	r.GET("/ws", handlePricesWS)
+	r.GET("/health", health.AliveHandler(serviceName))
+	r.GET("/ready", health.ReadyHandler(serviceName, map[string]health.Checker{
+		"redis": redis.Ping,
+	}))
+	r.GET("/ws", wsHandler.Handle)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -49,10 +71,12 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("shutdown: %v", err)
 	}
 }
