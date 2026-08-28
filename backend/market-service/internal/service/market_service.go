@@ -2,21 +2,29 @@ package service
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"market-service/internal/model"
 	"market-service/internal/provider"
+	"market-service/internal/provider/yahoo"
 	"market-service/internal/repository"
+	"market-service/internal/service/candles"
 )
 
 // MarketService exposes market read APIs.
 type MarketService struct {
-	rest     provider.RESTClient
-	cache    *repository.PriceCache
+	rest   provider.RESTClient
+	cache  *repository.PriceCache
+	yahoo  *yahoo.Client
 }
 
 func NewMarketService(rest provider.RESTClient, cache *repository.PriceCache) *MarketService {
-	return &MarketService{rest: rest, cache: cache}
+	return &MarketService{
+		rest:  rest,
+		cache: cache,
+		yahoo: yahoo.NewClient(),
+	}
 }
 
 func (s *MarketService) SearchSymbols(ctx context.Context, query string) ([]model.SymbolInfo, error) {
@@ -40,5 +48,25 @@ func (s *MarketService) GetQuote(ctx context.Context, symbol string) (map[string
 }
 
 func (s *MarketService) GetCandles(ctx context.Context, symbol, resolution string, from, to int64) ([]model.Candle, error) {
-	return s.rest.GetCandles(ctx, symbol, resolution, from, to)
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	from, to = candles.NormalizeRange(from, to, resolution)
+
+	result, err := s.rest.GetCandles(ctx, symbol, resolution, from, to)
+	if err != nil {
+		log.Printf("finnhub candles failed for %s: %v", symbol, err)
+	}
+	if len(result) > 0 {
+		return result, nil
+	}
+
+	fallback, yerr := s.yahoo.GetCandles(ctx, symbol, resolution, from, to)
+	if yerr != nil {
+		log.Printf("yahoo candles failed for %s: %v", symbol, yerr)
+		if err != nil {
+			return nil, err
+		}
+		return nil, yerr
+	}
+
+	return fallback, nil
 }

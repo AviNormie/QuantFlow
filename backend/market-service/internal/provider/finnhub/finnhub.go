@@ -254,13 +254,17 @@ func (p *Provider) GetCandles(ctx context.Context, symbol, resolution string, fr
 
 	candles := make([]model.Candle, len(body.T))
 	for i := range body.T {
+		vol := 0.0
+		if i < len(body.V) {
+			vol = body.V[i]
+		}
 		candles[i] = model.Candle{
 			Time:   body.T[i],
 			Open:   body.O[i],
 			High:   body.H[i],
 			Low:    body.L[i],
 			Close:  body.C[i],
-			Volume: body.V[i],
+			Volume: vol,
 		}
 	}
 	return candles, nil

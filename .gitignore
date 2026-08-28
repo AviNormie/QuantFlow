@@ -5,3 +5,9 @@ stockflow/.env.local
 stockflow/.env.sentry-build-plugin
 config.bat
 node_modules
+
+# Local interview prep docs — do not commit
+STOCKFLOW_ARCHITECTURE.md
+STOCKFLOW_DATA_FLOW.md
+STOCKFLOW_INTERVIEW_GUIDE.md
+STOCKFLOW_TECHNICAL_DEEP_DIVE.md

@@ -8,6 +8,7 @@ import (
 
 	"market-service/internal/model"
 	"market-service/internal/service"
+	candlesutil "market-service/internal/service/candles"
 
 	"github.com/gin-gonic/gin"
 )
@@ -76,35 +77,35 @@ func (h *MarketHandler) GetCandles(c *gin.Context) {
 	}
 
 	resolution := c.DefaultQuery("resolution", "D")
-	from, to, err := parseRange(c)
+	from, to, err := parseRange(c, resolution)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	candles, err := h.marketService.GetCandles(c.Request.Context(), symbol, resolution, from, to)
+	bars, err := h.marketService.GetCandles(c.Request.Context(), symbol, resolution, from, to)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "candles failed"})
 		return
 	}
 
-	if len(candles) == 0 {
+	if len(bars) == 0 {
 		c.JSON(http.StatusOK, gin.H{"s": "no_data"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"s": "ok",
-		"t": pluckTimes(candles),
-		"o": pluckOpen(candles),
-		"h": pluckHigh(candles),
-		"l": pluckLow(candles),
-		"c": pluckClose(candles),
-		"v": pluckVolume(candles),
+		"t": pluckTimes(bars),
+		"o": pluckOpen(bars),
+		"h": pluckHigh(bars),
+		"l": pluckLow(bars),
+		"c": pluckClose(bars),
+		"v": pluckVolume(bars),
 	})
 }
 
-func parseRange(c *gin.Context) (int64, int64, error) {
+func parseRange(c *gin.Context, resolution string) (int64, int64, error) {
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
 	if fromStr != "" && toStr != "" {
@@ -116,11 +117,13 @@ func parseRange(c *gin.Context) (int64, int64, error) {
 		if err != nil {
 			return 0, 0, err
 		}
+		from, to = candlesutil.NormalizeRange(from, to, resolution)
 		return from, to, nil
 	}
 
-	now := time.Now()
-	return now.Add(-30 * 24 * time.Hour).Unix(), now.Unix(), nil
+	now := time.Now().Unix()
+	from, to := candlesutil.NormalizeRange(now-30*24*3600, now, resolution)
+	return from, to, nil
 }
 
 func pluckTimes(candles []model.Candle) []int64 {
