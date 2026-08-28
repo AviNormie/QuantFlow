@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StockFlow API",
-    "version": "0.2.0",
-    "description": "StockFlow API gateway — auth, market data, and WebSocket live prices."
+    "version": "0.3.0",
+    "description": "StockFlow API gateway — auth, market-service data, and WebSocket live prices via Redis pub/sub."
   },
   "servers": [
     {

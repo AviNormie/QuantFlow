@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TRADINGVIEW_DEMO_DATAFEED_URL } from "@/lib/market/tradingview";
+import { getAccessToken } from "@/lib/auth";
+import { StockFlowDatafeed } from "@/lib/market/stockflow-datafeed";
 
 type TradingViewChartProps = {
   symbol: string;
@@ -48,7 +49,7 @@ const STOCKFLOW_OVERRIDES: Record<string, string | number> = {
 function waitForTradingView(): Promise<void> {
   return new Promise((resolve) => {
     const check = () => {
-      if (window.TradingView?.widget && window.Datafeeds?.UDFCompatibleDatafeed) {
+      if (window.TradingView?.widget) {
         resolve();
         return;
       }
@@ -65,6 +66,7 @@ export function TradingViewChart({
 }: TradingViewChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<TradingViewWidget | null>(null);
+  const datafeedRef = useRef<StockFlowDatafeed | null>(null);
   const propsRef = useRef({ symbol, interval });
   propsRef.current = { symbol, interval };
 
@@ -107,15 +109,15 @@ export function TradingViewChart({
     }
 
     const height = Math.max(container.clientHeight || 420, 420);
+    const datafeed = new StockFlowDatafeed({ getAccessToken });
+    datafeedRef.current = datafeed;
 
     try {
       const widget = new window.TradingView.widget({
         container,
         locale: "en",
         library_path: "/charting_library/",
-        datafeed: new window.Datafeeds.UDFCompatibleDatafeed(
-          TRADINGVIEW_DEMO_DATAFEED_URL,
-        ),
+        datafeed,
         symbol,
         interval,
         height,
@@ -165,6 +167,7 @@ export function TradingViewChart({
 
     return () => {
       setChartReady(false);
+      datafeedRef.current = null;
       if (widgetRef.current) {
         try {
           widgetRef.current.remove();
@@ -191,10 +194,7 @@ export function TradingViewChart({
 
   if (loadError) {
     return (
-      <div
-        className={className}
-        style={{ minHeight: 420 }}
-      >
+      <div className={className} style={{ minHeight: 420 }}>
         <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-2 p-8 text-center">
           <p className="text-sm text-zinc-400">{loadError}</p>
           <p className="text-xs text-zinc-500">
@@ -207,10 +207,7 @@ export function TradingViewChart({
 
   if (!isReady) {
     return (
-      <div
-        className={className}
-        style={{ minHeight: 420 }}
-      >
+      <div className={className} style={{ minHeight: 420 }}>
         <div className="flex h-full min-h-[420px] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-400" />
         </div>

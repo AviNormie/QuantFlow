@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TrendingUp } from "lucide-react";
-import { clearAuth, getUserEmail, isAuthenticated } from "@/lib/auth";
+import { getUserEmail, isAuthenticated, logout } from "@/lib/auth";
 
 export function Navbar() {
   const router = useRouter();
@@ -19,8 +19,8 @@ export function Navbar() {
     }
   }, []);
 
-  const handleLogout = () => {
-    clearAuth();
+  const handleLogout = async () => {
+    await logout();
     setEmail(null);
     router.push("/");
   };

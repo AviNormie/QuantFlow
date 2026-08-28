@@ -1,14 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getPublicWebSocketUrl } from "@/lib/env";
+import { getAccessToken } from "@/lib/auth";
 import type { LiveTrade } from "@/lib/market/types";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 
 function buildWsUrl(symbol: string) {
-  const base =
-    process.env.NEXT_PUBLIC_WEBSOCKET_URL ?? "ws://localhost:8083";
+  const base = getPublicWebSocketUrl();
   const url = new URL("/ws", base.endsWith("/") ? base : `${base}/`);
+  const token = getAccessToken();
+  if (token) {
+    url.searchParams.set("token", token);
+  }
   url.searchParams.set("symbol", symbol);
   return url.toString();
 }
@@ -31,7 +36,15 @@ export function useStockWebSocket(symbol: string) {
     const ws = new WebSocket(buildWsUrl(symbol));
     wsRef.current = ws;
 
-    ws.onopen = () => setStatus("connected");
+    ws.onopen = () => {
+      setStatus("connected");
+      ws.send(
+        JSON.stringify({
+          action: "subscribe",
+          symbols: [symbolRef.current],
+        }),
+      );
+    };
 
     ws.onmessage = (event) => {
       try {

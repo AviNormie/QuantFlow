@@ -1,5 +1,14 @@
-import { getApiUrl } from "@/lib/auth";
+import { getPublicApiUrl } from "@/lib/env";
+import { getAccessToken, refreshTokens } from "@/lib/auth";
 import type { CandleBar, CandleResolution } from "./types";
+
+export type SymbolInfo = {
+  symbol: string;
+  name: string;
+  description: string;
+  exchange: string;
+  type: string;
+};
 
 type FinnhubCandleResponse = {
   s: "ok" | "no_data";
@@ -11,12 +20,38 @@ type FinnhubCandleResponse = {
   v?: number[];
 };
 
+async function authFetch(url: string, options: RequestInit = {}) {
+  const headers = new Headers(options.headers);
+  const token = getAccessToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  let res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401) {
+    const refreshed = await refreshTokens();
+    if (refreshed) {
+      headers.set("Authorization", `Bearer ${getAccessToken()}`);
+      res = await fetch(url, { ...options, headers });
+    }
+  }
+
+  return res;
+}
+
 export async function fetchCandles(
   symbol: string,
   resolution: CandleResolution = "D",
+  from?: number,
+  to?: number,
 ): Promise<CandleBar[]> {
-  const params = new URLSearchParams({ symbol, resolution });
-  const res = await fetch(`${getApiUrl()}/api/market/candles?${params.toString()}`);
+  const params = new URLSearchParams({ resolution });
+  if (from) params.set("from", String(from));
+  if (to) params.set("to", String(to));
+
+  const res = await authFetch(
+    `${getPublicApiUrl()}/api/market/candles/${encodeURIComponent(symbol)}?${params}`,
+  );
 
   if (!res.ok) {
     const body = await res.text();
@@ -40,8 +75,9 @@ export async function fetchCandles(
 }
 
 export async function fetchQuote(symbol: string) {
-  const params = new URLSearchParams({ symbol });
-  const res = await fetch(`${getApiUrl()}/api/market/quote?${params.toString()}`);
+  const res = await authFetch(
+    `${getPublicApiUrl()}/api/market/quotes/${encodeURIComponent(symbol)}`,
+  );
 
   if (!res.ok) {
     throw new Error("Failed to load quote");
@@ -56,4 +92,26 @@ export async function fetchQuote(symbol: string) {
     o: number;
     pc: number;
   }>;
+}
+
+export async function searchSymbols(query: string): Promise<SymbolInfo[]> {
+  const params = new URLSearchParams({ q: query });
+  const res = await authFetch(
+    `${getPublicApiUrl()}/api/market/symbols/search?${params}`,
+  );
+  if (!res.ok) {
+    throw new Error("Failed to search symbols");
+  }
+  const data = (await res.json()) as { results: SymbolInfo[] };
+  return data.results ?? [];
+}
+
+export async function resolveSymbol(symbol: string): Promise<SymbolInfo> {
+  const res = await authFetch(
+    `${getPublicApiUrl()}/api/market/symbols/${encodeURIComponent(symbol)}`,
+  );
+  if (!res.ok) {
+    throw new Error("Failed to resolve symbol");
+  }
+  return res.json() as Promise<SymbolInfo>;
 }

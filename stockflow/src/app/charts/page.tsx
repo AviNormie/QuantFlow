@@ -225,12 +225,12 @@ export default function ChartsPage() {
                     <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
                       <p className="text-sm text-zinc-400">{error}</p>
                       <p className="max-w-md text-xs text-zinc-500">
-                        Ensure the API gateway (port 8080), Next.js, and
-                        websocket-service (port 8083) are running. Set{" "}
+                        Ensure docker compose is running (postgres, redis,
+                        api-gateway, market-service, websocket-service). Set{" "}
                         <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-emerald-400">
                           FINNHUB_API_KEY
                         </code>{" "}
-                        on websocket-service for live prices.
+                        for market data ingestion.
                       </p>
                       <Button size="sm" variant="outline" onClick={loadQuote}>
                         Retry
