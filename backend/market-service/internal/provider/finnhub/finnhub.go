@@ -154,11 +154,19 @@ func (p *Provider) SearchSymbols(ctx context.Context, query string) ([]model.Sym
 
 	out := make([]model.SymbolInfo, 0, len(body.Result))
 	for _, item := range body.Result {
+		symbolType := strings.TrimSpace(item.Type)
+		if symbolType != "" && symbolType != "Common Stock" && symbolType != "ETP" && symbolType != "ETF" {
+			continue
+		}
+		symbol := strings.ToUpper(strings.TrimSpace(item.Symbol))
+		if symbol == "" {
+			continue
+		}
 		out = append(out, model.SymbolInfo{
-			Symbol:      strings.ToUpper(item.Symbol),
+			Symbol:      symbol,
 			Name:        item.DisplaySymbol,
 			Description: item.Description,
-			Type:        item.Type,
+			Type:        symbolType,
 			Exchange:    "US",
 			Currency:    "USD",
 		})
@@ -208,6 +216,10 @@ func (p *Provider) GetQuote(ctx context.Context, symbol string) (map[string]floa
 	}
 	if err := json.Unmarshal(resp, &body); err != nil {
 		return nil, err
+	}
+
+	if body.C == 0 && body.PC == 0 {
+		return nil, fmt.Errorf("finnhub: no quote data for %s", symbol)
 	}
 
 	return map[string]float64{

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 
@@ -66,14 +67,42 @@ func (s *MarketService) ResolveSymbol(ctx context.Context, symbol string) (*mode
 
 func (s *MarketService) GetQuote(ctx context.Context, symbol string) (map[string]float64, error) {
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+
 	quote, err := s.rest.GetQuote(ctx, symbol)
-	if err == nil {
+	if err == nil && isValidQuote(quote) {
 		return quote, nil
 	}
-	if tick, cacheErr := s.cache.GetLatest(ctx, symbol); cacheErr == nil {
+	if err != nil {
+		log.Printf("finnhub quote failed for %s: %v", symbol, err)
+	}
+
+	if tick, cacheErr := s.cache.GetLatest(ctx, symbol); cacheErr == nil && tick.Price > 0 {
 		return map[string]float64{"c": tick.Price}, nil
 	}
-	return nil, err
+
+	fallback, yerr := s.yahoo.GetQuote(ctx, symbol)
+	if yerr != nil {
+		log.Printf("yahoo quote failed for %s: %v", symbol, yerr)
+	}
+	if isValidQuote(fallback) {
+		return fallback, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	if yerr != nil {
+		return nil, yerr
+	}
+	return nil, fmt.Errorf("no quote data for %s", symbol)
+}
+
+func isValidQuote(quote map[string]float64) bool {
+	if quote == nil {
+		return false
+	}
+	price, ok := quote["c"]
+	return ok && price > 0
 }
 
 func (s *MarketService) GetCandles(ctx context.Context, symbol, resolution string, from, to int64) ([]model.Candle, error) {

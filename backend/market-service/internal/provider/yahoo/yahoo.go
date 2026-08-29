@@ -28,7 +28,7 @@ func (c *Client) GetCandles(ctx context.Context, symbol, resolution string, from
 
 	endpoint := fmt.Sprintf("%s/%s?interval=%s&period1=%d&period2=%d",
 		chartBase,
-		url.PathEscape(strings.ToUpper(symbol)),
+		url.PathEscape(ToYahooSymbol(symbol)),
 		url.QueryEscape(interval),
 		period1,
 		period2,
@@ -108,6 +108,87 @@ func (c *Client) GetCandles(ctx context.Context, symbol, resolution string, from
 	}
 
 	return candles, nil
+}
+
+// GetQuote returns latest price stats from Yahoo chart meta (Finnhub-compatible shape).
+func (c *Client) GetQuote(ctx context.Context, symbol string) (map[string]float64, error) {
+	yahooSymbol := ToYahooSymbol(symbol)
+	endpoint := fmt.Sprintf("%s/%s?interval=1d&range=5d",
+		chartBase,
+		url.PathEscape(yahooSymbol),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; StockFlow/1.0)")
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode >= 400 {
+		return nil, fmt.Errorf("yahoo status %d", res.StatusCode)
+	}
+
+	var payload struct {
+		Chart struct {
+			Result []struct {
+				Meta struct {
+					RegularMarketPrice   float64 `json:"regularMarketPrice"`
+					PreviousClose        float64 `json:"previousClose"`
+					ChartPreviousClose   float64 `json:"chartPreviousClose"`
+					RegularMarketOpen    float64 `json:"regularMarketOpen"`
+					RegularMarketDayHigh float64 `json:"regularMarketDayHigh"`
+					RegularMarketDayLow  float64 `json:"regularMarketDayLow"`
+				} `json:"meta"`
+			} `json:"result"`
+		} `json:"chart"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	if len(payload.Chart.Result) == 0 {
+		return nil, nil
+	}
+
+	meta := payload.Chart.Result[0].Meta
+	price := meta.RegularMarketPrice
+	prevClose := meta.PreviousClose
+	if prevClose == 0 {
+		prevClose = meta.ChartPreviousClose
+	}
+	if price <= 0 {
+		return nil, nil
+	}
+
+	change := price - prevClose
+	changePct := 0.0
+	if prevClose > 0 {
+		changePct = (change / prevClose) * 100
+	}
+
+	return map[string]float64{
+		"c":  price,
+		"d":  change,
+		"dp": changePct,
+		"h":  meta.RegularMarketDayHigh,
+		"l":  meta.RegularMarketDayLow,
+		"o":  meta.RegularMarketOpen,
+		"pc": prevClose,
+	}, nil
+}
+
+// ToYahooSymbol maps Finnhub-style tickers to Yahoo (e.g. BRK.B → BRK-B).
+func ToYahooSymbol(symbol string) string {
+	return strings.ReplaceAll(strings.ToUpper(strings.TrimSpace(symbol)), ".", "-")
 }
 
 func deref(values []*float64, i int) *float64 {

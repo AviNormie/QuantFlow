@@ -32,8 +32,8 @@ export default function ChartsPage() {
     o: number;
     pc: number;
   } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(true);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
   const { lastTrade, status, reconnect } = useStockWebSocket(symbol);
   const tradingViewInterval = useMemo(
@@ -48,15 +48,16 @@ export default function ChartsPage() {
   }, [router]);
 
   const loadQuote = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setQuoteLoading(true);
+    setQuoteError(null);
     try {
       const q = await fetchQuote(symbol);
       setQuote(q);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load market data");
+      setQuote(null);
+      setQuoteError(e instanceof Error ? e.message : "Failed to load quote");
     } finally {
-      setLoading(false);
+      setQuoteLoading(false);
     }
   }, [symbol]);
 
@@ -116,6 +117,11 @@ export default function ChartsPage() {
                   )}
                 >
                   {formatChange(change)}
+                </span>
+              )}
+              {quoteError && !quoteLoading && (
+                <span className="text-xs text-amber-400/90">
+                  Quote unavailable — chart still loads
                 </span>
               )}
             </div>
@@ -211,33 +217,17 @@ export default function ChartsPage() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="relative h-[min(62vh,560px)] min-h-[420px]">
-                  {loading && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/60 backdrop-blur-sm">
-                      <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-400" />
+                  {quoteLoading && (
+                    <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-md bg-zinc-950/80 px-2 py-1 text-xs text-zinc-400">
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-400" />
+                      Loading quote…
                     </div>
                   )}
-                  {error ? (
-                    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-                      <p className="text-sm text-zinc-400">{error}</p>
-                      <p className="max-w-md text-xs text-zinc-500">
-                        Ensure docker compose is running (postgres, redis,
-                        api-gateway, market-service, websocket-service). Set{" "}
-                        <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-emerald-400">
-                          FINNHUB_API_KEY
-                        </code>{" "}
-                        for market data ingestion.
-                      </p>
-                      <Button size="sm" variant="outline" onClick={loadQuote}>
-                        Retry
-                      </Button>
-                    </div>
-                  ) : (
-                    <TradingViewChart
-                      symbol={symbol}
-                      interval={tradingViewInterval}
-                      className="h-full"
-                    />
-                  )}
+                  <TradingViewChart
+                    symbol={symbol}
+                    interval={tradingViewInterval}
+                    className="h-full"
+                  />
                 </div>
               </CardContent>
             </Card>
