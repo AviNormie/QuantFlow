@@ -16,6 +16,7 @@ import (
 
 	"shared/gateway"
 	"shared/health"
+	"shared/metrics"
 	"shared/monitoring"
 	"shared/redis"
 
@@ -40,8 +41,11 @@ func main() {
 	}
 	defer mon.Close()
 
+	metrics.Init(serviceName)
+
 	r := gin.Default()
 	mon.AttachGin(r)
+	r.Use(metrics.Middleware())
 	r.Use(gateway.RequestIDMiddleware())
 	r.Use(gateway.TimeoutMiddleware(30 * time.Second))
 	r.Use(gateway.RateLimitMiddleware())
@@ -54,6 +58,7 @@ func main() {
 		"auth":  downstreamHealthChecker(authURL + "/ready"),
 		"market": downstreamHealthChecker(marketURL + "/ready"),
 	}))
+	r.GET("/metrics", metrics.Handler())
 
 	r.Any("/api/auth/*proxyPath", makePathProxy(authURL, "/api/auth"))
 	r.Any("/api/market/*proxyPath", makePathProxy(marketURL, "/api/market"))

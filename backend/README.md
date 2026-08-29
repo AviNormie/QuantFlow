@@ -39,7 +39,7 @@ GET  /api/auth/me
 ## Market endpoints (via gateway)
 
 ```text
-GET /api/market/symbols/search?q=AAPL
+GET /api/market/symbols/search?q=AAPL&limit=30
 GET /api/market/symbols/{symbol}
 GET /api/market/quotes/{symbol}
 GET /api/market/candles/{symbol}?resolution=D&from=&to=

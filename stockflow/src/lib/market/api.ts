@@ -94,8 +94,12 @@ export async function fetchQuote(symbol: string) {
   }>;
 }
 
-export async function searchSymbols(query: string): Promise<SymbolInfo[]> {
-  const params = new URLSearchParams({ q: query });
+export async function searchSymbols(query: string, limit = 30): Promise<SymbolInfo[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const trimmed = query.trim();
+  if (trimmed) {
+    params.set("q", trimmed);
+  }
   const res = await authFetch(
     `${getPublicApiUrl()}/api/market/symbols/search?${params}`,
   );

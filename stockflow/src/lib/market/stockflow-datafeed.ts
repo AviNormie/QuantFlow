@@ -93,7 +93,11 @@ export class StockFlowDatafeed {
     _symbolType: string,
     onResult: (items: Array<Record<string, string>>) => void,
   ) {
-    const params = new URLSearchParams({ q: userInput });
+    const trimmed = userInput.trim();
+    const params = new URLSearchParams({ limit: "30" });
+    if (trimmed) {
+      params.set("q", trimmed);
+    }
     this.authFetch(`${this.apiUrl}/api/market/symbols/search?${params}`)
       .then(async (res) => {
         if (!res.ok) {

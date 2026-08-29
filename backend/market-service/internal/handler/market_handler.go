@@ -23,12 +23,17 @@ func NewMarketHandler(marketService *service.MarketService) *MarketHandler {
 
 func (h *MarketHandler) SearchSymbols(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
-	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "q is required"})
-		return
+	limit := 30
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+			return
+		}
+		limit = parsed
 	}
 
-	results, err := h.marketService.SearchSymbols(c.Request.Context(), query)
+	results, err := h.marketService.SearchSymbols(c.Request.Context(), query, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
 		return

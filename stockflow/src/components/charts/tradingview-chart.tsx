@@ -131,6 +131,9 @@ export function TradingViewChart({
           "study_templates",
           "side_toolbar_in_fullscreen_mode",
           "header_in_fullscreen_mode",
+          "header_symbol_search",
+          "symbol_search_hot_key",
+          "allow_arbitrary_symbol_search_input",
         ],
         toolbar_bg: "#18181b",
         loading_screen: {

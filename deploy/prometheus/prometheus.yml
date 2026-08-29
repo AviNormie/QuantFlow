@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: stockflow-services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - api-gateway:8080
+          - auth-service:8084
+          - market-service:8082
+          - websocket-service:8083
+        labels:
+          stack: stockflow

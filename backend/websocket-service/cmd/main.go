@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"shared/health"
+	"shared/metrics"
 	"shared/monitoring"
 	"shared/redis"
 	"websocket-service/internal/handler"
@@ -40,6 +41,8 @@ func main() {
 	}
 	defer mon.Close()
 
+	metrics.Init(serviceName)
+
 	h := hub.NewHub()
 	sub := subscriber.NewRedisSubscriber(redisClient, pubSubChannel, h)
 	go sub.RunWithReconnect(ctx)
@@ -48,11 +51,13 @@ func main() {
 
 	r := gin.Default()
 	mon.AttachGin(r)
+	r.Use(metrics.Middleware())
 
 	r.GET("/health", health.AliveHandler(serviceName))
 	r.GET("/ready", health.ReadyHandler(serviceName, map[string]health.Checker{
 		"redis": redis.Ping,
 	}))
+	r.GET("/metrics", metrics.Handler())
 	r.GET("/ws", wsHandler.Handle)
 
 	srv := &http.Server{

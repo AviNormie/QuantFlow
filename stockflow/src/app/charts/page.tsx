@@ -3,13 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isAuthenticated } from "@/lib/auth";
-import { Activity, Radio, Search, Wifi, WifiOff } from "lucide-react";
+import { Activity, Radio, Wifi, WifiOff } from "lucide-react";
+import { SymbolSearch } from "@/components/charts/symbol-search";
 import { TradingViewChart } from "@/components/charts/tradingview-chart";
 import { Navbar } from "@/components/layout/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStockWebSocket } from "@/hooks/use-stock-websocket";
@@ -68,10 +68,12 @@ export default function ChartsPage() {
   const change = quote?.dp ?? 0;
   const isPositive = change >= 0;
 
-  const handleSymbolSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const next = input.trim().toUpperCase();
-    if (next) setSymbol(next);
+  const handleSymbolSelect = (next: string) => {
+    const symbolValue = next.trim().toUpperCase();
+    if (symbolValue) {
+      setSymbol(symbolValue);
+      setInput(symbolValue);
+    }
   };
 
   return (
@@ -119,20 +121,13 @@ export default function ChartsPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSymbolSubmit} className="flex w-full max-w-sm gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value.toUpperCase())}
-                placeholder="Search symbol..."
-                className="pl-9"
-              />
-            </div>
-            <Button type="submit" variant="secondary">
-              Load
-            </Button>
-          </form>
+          <div className="w-full max-w-md">
+            <SymbolSearch
+              value={input}
+              onChange={setInput}
+              onSelect={handleSymbolSelect}
+            />
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[240px_1fr]">

@@ -10,6 +10,7 @@ import (
 	"market-service/internal/provider/yahoo"
 	"market-service/internal/repository"
 	"market-service/internal/service/candles"
+	"market-service/internal/service/symbols"
 )
 
 // MarketService exposes market read APIs.
@@ -27,8 +28,36 @@ func NewMarketService(rest provider.RESTClient, cache *repository.PriceCache) *M
 	}
 }
 
-func (s *MarketService) SearchSymbols(ctx context.Context, query string) ([]model.SymbolInfo, error) {
-	return s.rest.SearchSymbols(ctx, strings.TrimSpace(query))
+func (s *MarketService) SearchSymbols(ctx context.Context, query string, limit int) ([]model.SymbolInfo, error) {
+	query = strings.TrimSpace(query)
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	if query == "" {
+		return symbols.FilterPopular("", limit), nil
+	}
+
+	results, err := s.rest.SearchSymbols(ctx, query)
+	if err != nil {
+		fallback := symbols.FilterPopular(query, limit)
+		if len(fallback) > 0 {
+			return fallback, nil
+		}
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return symbols.FilterPopular(query, limit), nil
+	}
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
 }
 
 func (s *MarketService) ResolveSymbol(ctx context.Context, symbol string) (*model.SymbolInfo, error) {

@@ -15,6 +15,7 @@ import (
 	"market-service/internal/repository"
 	"market-service/internal/service"
 	"shared/health"
+	"shared/metrics"
 	"shared/monitoring"
 	"shared/redis"
 
@@ -42,6 +43,8 @@ func main() {
 	}
 	defer mon.Close()
 
+	metrics.Init(cfg.ServiceName)
+
 	provider := finnhub.NewProvider(cfg.FinnhubAPIKey)
 	normalizer := service.NewNormalizer()
 	priceCache := repository.NewPriceCache(
@@ -58,11 +61,13 @@ func main() {
 
 	r := gin.Default()
 	mon.AttachGin(r)
+	r.Use(metrics.Middleware())
 
 	r.GET("/health", health.AliveHandler(cfg.ServiceName))
 	r.GET("/ready", health.ReadyHandler(cfg.ServiceName, map[string]health.Checker{
 		"redis": redis.Ping,
 	}))
+	r.GET("/metrics", metrics.Handler())
 
 	r.GET("/symbols/search", marketHandler.SearchSymbols)
 	r.GET("/symbols/:symbol", marketHandler.ResolveSymbol)

@@ -15,6 +15,7 @@ import (
 	"auth-service/internal/repository"
 	"auth-service/internal/service"
 	"shared/health"
+	"shared/metrics"
 	"shared/monitoring"
 	"shared/redis"
 
@@ -49,6 +50,8 @@ func main() {
 	}
 	defer mon.Close()
 
+	metrics.Init(serviceName)
+
 	userRepo := repository.NewUserRepository(db)
 	sessionRepo := repository.NewSessionRepository(redisClient)
 	userService := service.NewUserService(userRepo, sessionRepo)
@@ -56,6 +59,7 @@ func main() {
 
 	r := gin.Default()
 	mon.AttachGin(r)
+	r.Use(metrics.Middleware())
 
 	r.GET("/health", health.AliveHandler(serviceName))
 	r.GET("/ready", health.ReadyHandler(serviceName, map[string]health.Checker{
@@ -68,6 +72,7 @@ func main() {
 		},
 		"redis": redis.Ping,
 	}))
+	r.GET("/metrics", metrics.Handler())
 
 	r.POST("/register", authHandler.Register)
 	r.POST("/signup", authHandler.Signup)

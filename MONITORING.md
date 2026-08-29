@@ -279,6 +279,61 @@ Each service also receives `SERVICE_NAME` individually.
 
 ---
 
+## Prometheus + Grafana (local / Docker Compose)
+
+StockFlow exposes Prometheus metrics on every Go service at **`GET /metrics`**.
+
+### Start the monitoring stack
+
+```bash
+docker compose up -d prometheus grafana
+# Or full stack: docker compose up --build
+```
+
+| URL | Purpose |
+|-----|---------|
+| http://localhost:9090 | Prometheus UI |
+| http://localhost:3001 | Grafana UI (default login below) |
+
+### Environment variables (root `.env`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PROMETHEUS_PORT` | `9090` | Host port for Prometheus |
+| `GRAFANA_PORT` | `3001` | Host port for Grafana (avoids clash with Next.js on 3000) |
+| `GRAFANA_ADMIN_USER` | `admin` | Grafana admin username |
+| `GRAFANA_ADMIN_PASSWORD` | `admin` | Grafana admin password — **change in production** |
+| `GRAFANA_ROOT_URL` | `http://localhost:3001` | Grafana public URL |
+
+No extra env vars are required on Go services — metrics are always enabled when `/metrics` is scraped.
+
+### Metrics exposed
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `http_requests_total` | `service`, `method`, `path`, `status` | Request counter |
+| `http_request_duration_seconds` | `service`, `method`, `path` | Request latency histogram |
+
+`/health` and `/metrics` are excluded from latency counters to avoid scrape noise.
+
+### Provisioned Grafana dashboard
+
+On first start, Grafana loads:
+
+- Datasource: Prometheus at `http://prometheus:9090`
+- Dashboard: **StockFlow Services** — request rate, p95 latency, status breakdown
+
+Config lives in `deploy/grafana/provisioning/` and `deploy/prometheus/prometheus.yml`.
+
+### Render / production note
+
+Prometheus and Grafana are included in **docker-compose for local dev**. Render does not run this stack by default. For production metrics you would either:
+
+- Run Grafana Cloud / hosted Prometheus and scrape public `/metrics` (not recommended without auth), or
+- Keep monitoring local while production uses Sentry + PostHog.
+
+---
+
 ## File reference
 
 | File | Purpose |
