@@ -1,6 +1,7 @@
 import { getPublicApiUrl } from "@/lib/env";
 import { getAccessToken } from "@/lib/auth";
 import { marketAuthFetch } from "@/lib/market/auth-fetch";
+import { getCachedBars, setCachedBars } from "@/lib/market/market-cache";
 import { stockFlowWs } from "@/lib/market/ws-client";
 import {
   BarAggregator,
@@ -210,6 +211,13 @@ export class StockFlowDatafeed {
       to: String(periodParams.to),
     });
     const url = `${this.apiUrl}/api/market/candles/${encodeURIComponent(symbolInfo.ticker)}?${params}`;
+    const cacheKey = `${symbolInfo.ticker}:${resolution}:${periodParams.from}:${periodParams.to}`;
+
+    const cached = getCachedBars<Bar[]>(cacheKey);
+    if (cached) {
+      onResult(cached, { noData: cached.length === 0 });
+      return;
+    }
 
     this.authFetch(url)
       .then(async (res) => {
@@ -248,6 +256,7 @@ export class StockFlowDatafeed {
               bar.high >= bar.low,
           )
           .sort((a, b) => a.time - b.time);
+        setCachedBars(cacheKey, bars);
         onResult(bars, { noData: bars.length === 0 });
       })
       .catch(() => onError("failed to load bars"));

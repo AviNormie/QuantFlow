@@ -11,6 +11,7 @@ export type WsTrade = {
 export type WsConnectionStatus =
   | "connecting"
   | "connected"
+  | "reconnecting"
   | "disconnected"
   | "error";
 
@@ -62,12 +63,13 @@ class StockFlowWsClient {
     if (this.intentionalClose || this.refCount === 0) return;
     if (this.reconnectTimer) return;
 
-    this.setStatus("disconnected");
+    this.setStatus("reconnecting");
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_MS);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.ensureConnected();
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_MS);
-    }, this.reconnectDelay);
+    }, delay);
   }
 
   private resubscribeAll() {

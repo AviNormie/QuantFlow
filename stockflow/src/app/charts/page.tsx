@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { isAuthenticated } from "@/lib/auth";
 import { Activity, Radio, Wifi, WifiOff } from "lucide-react";
 import { SymbolSearch } from "@/components/charts/symbol-search";
@@ -14,25 +14,46 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStockWebSocket } from "@/hooks/use-stock-websocket";
 import { fetchQuote } from "@/lib/market/api";
+import { getCachedQuote, setCachedQuote } from "@/lib/market/market-cache";
 import { resolutionToTradingViewInterval } from "@/lib/market/tradingview";
 import { stockFlowWs } from "@/lib/market/ws-client";
 import { POPULAR_SYMBOLS, type CandleResolution } from "@/lib/market/types";
 import { cn, formatChange, formatPrice } from "@/lib/utils";
 
-export default function ChartsPage() {
+const DEFAULT_SYMBOL = "AAPL";
+
+type Quote = {
+  c: number;
+  d: number;
+  dp: number;
+  h: number;
+  l: number;
+  o: number;
+  pc: number;
+};
+
+function ChartsPageInner() {
   const router = useRouter();
-  const [symbol, setSymbol] = useState("AAPL");
-  const [input, setInput] = useState("AAPL");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const symbol = (
+    searchParams.get("symbol")?.trim().toUpperCase() || DEFAULT_SYMBOL
+  );
+  const setSymbol = useCallback(
+    (next: string) => {
+      const value = next.trim().toUpperCase();
+      if (!value) return;
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("symbol", value);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const [input, setInput] = useState(symbol);
   const [resolution, setResolution] = useState<CandleResolution>("D");
-  const [quote, setQuote] = useState<{
-    c: number;
-    d: number;
-    dp: number;
-    h: number;
-    l: number;
-    o: number;
-    pc: number;
-  } | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
   const [quoteError, setQuoteError] = useState<string | null>(null);
 
@@ -41,6 +62,10 @@ export default function ChartsPage() {
     () => resolutionToTradingViewInterval(resolution),
     [resolution],
   );
+
+  useEffect(() => {
+    setInput(symbol);
+  }, [symbol]);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -53,11 +78,17 @@ export default function ChartsPage() {
 
   const loadQuote = useCallback(async () => {
     setQuoteError(null);
+    const cached = getCachedQuote<Quote>(symbol);
+    if (cached) {
+      setQuote(cached);
+      setQuoteLoading(false);
+    }
     try {
       const q = await fetchQuote(symbol);
+      setCachedQuote(symbol, q);
       setQuote(q);
     } catch (e) {
-      setQuote(null);
+      if (!cached) setQuote(null);
       setQuoteError(e instanceof Error ? e.message : "Failed to load quote");
     } finally {
       setQuoteLoading(false);
@@ -65,9 +96,9 @@ export default function ChartsPage() {
   }, [symbol]);
 
   useEffect(() => {
-    setQuoteLoading(true);
+    if (!getCachedQuote(symbol)) setQuoteLoading(true);
     loadQuote();
-  }, [loadQuote]);
+  }, [loadQuote, symbol]);
 
   const livePrice = lastTrade?.price ?? quote?.c ?? null;
   const change = quote?.dp ?? 0;
@@ -240,7 +271,7 @@ export default function ChartsPage() {
               <span>
                 {/* Powered by TradingView Advanced Charts · Finnhub WebSocket quotes */}
               </span>
-              {status !== "connected" && (
+              {status !== "connected" && status !== "reconnecting" && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -260,5 +291,19 @@ export default function ChartsPage() {
         </p>
       </main>
     </div>
+  );
+}
+
+export default function ChartsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-400" />
+        </div>
+      }
+    >
+      <ChartsPageInner />
+    </Suspense>
   );
 }
