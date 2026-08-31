@@ -14,19 +14,33 @@ import (
 	"market-service/internal/service/symbols"
 )
 
+// SymbolIngestor subscribes symbols to the live Finnhub websocket feed.
+type SymbolIngestor interface {
+	EnsureSubscribed(symbol string)
+}
+
 // MarketService exposes market read APIs.
 type MarketService struct {
 	rest   provider.RESTClient
 	cache  *repository.PriceCache
 	yahoo  *yahoo.Client
+	ingest SymbolIngestor
 }
 
-func NewMarketService(rest provider.RESTClient, cache *repository.PriceCache) *MarketService {
+func NewMarketService(rest provider.RESTClient, cache *repository.PriceCache, ingest SymbolIngestor) *MarketService {
 	return &MarketService{
-		rest:  rest,
-		cache: cache,
-		yahoo: yahoo.NewClient(),
+		rest:   rest,
+		cache:  cache,
+		yahoo:  yahoo.NewClient(),
+		ingest: ingest,
 	}
+}
+
+func (s *MarketService) trackSymbol(symbol string) {
+	if s.ingest == nil {
+		return
+	}
+	s.ingest.EnsureSubscribed(symbol)
 }
 
 func (s *MarketService) SearchSymbols(ctx context.Context, query string, limit int) ([]model.SymbolInfo, error) {
@@ -62,11 +76,35 @@ func (s *MarketService) SearchSymbols(ctx context.Context, query string, limit i
 }
 
 func (s *MarketService) ResolveSymbol(ctx context.Context, symbol string) (*model.SymbolInfo, error) {
-	return s.rest.ResolveSymbol(ctx, symbol)
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	s.trackSymbol(symbol)
+
+	if info, ok := symbols.FindBySymbol(symbol); ok {
+		copy := info
+		return &copy, nil
+	}
+
+	info, err := s.rest.ResolveSymbol(ctx, symbol)
+	if err == nil && info != nil {
+		return info, nil
+	}
+	if err != nil {
+		log.Printf("finnhub resolve failed for %s: %v", symbol, err)
+	}
+
+	return &model.SymbolInfo{
+		Symbol:      symbol,
+		Name:        symbol,
+		Description: symbol,
+		Type:        "Common Stock",
+		Exchange:    "US",
+		Currency:    "USD",
+	}, nil
 }
 
 func (s *MarketService) GetQuote(ctx context.Context, symbol string) (map[string]float64, error) {
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	s.trackSymbol(symbol)
 
 	quote, err := s.rest.GetQuote(ctx, symbol)
 	if err == nil && isValidQuote(quote) {
@@ -76,16 +114,16 @@ func (s *MarketService) GetQuote(ctx context.Context, symbol string) (map[string
 		log.Printf("finnhub quote failed for %s: %v", symbol, err)
 	}
 
-	if tick, cacheErr := s.cache.GetLatest(ctx, symbol); cacheErr == nil && tick.Price > 0 {
-		return map[string]float64{"c": tick.Price}, nil
-	}
-
 	fallback, yerr := s.yahoo.GetQuote(ctx, symbol)
 	if yerr != nil {
 		log.Printf("yahoo quote failed for %s: %v", symbol, yerr)
 	}
 	if isValidQuote(fallback) {
 		return fallback, nil
+	}
+
+	if tick, cacheErr := s.cache.GetLatest(ctx, symbol); cacheErr == nil && tick.Price > 0 {
+		return map[string]float64{"c": tick.Price}, nil
 	}
 
 	if err != nil {
@@ -107,6 +145,7 @@ func isValidQuote(quote map[string]float64) bool {
 
 func (s *MarketService) GetCandles(ctx context.Context, symbol, resolution string, from, to int64) ([]model.Candle, error) {
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	s.trackSymbol(symbol)
 	from, to = candles.NormalizeRange(from, to, resolution)
 
 	result, err := s.rest.GetCandles(ctx, symbol, resolution, from, to)

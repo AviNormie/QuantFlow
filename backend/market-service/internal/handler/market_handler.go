@@ -94,6 +94,8 @@ func (h *MarketHandler) GetCandles(c *gin.Context) {
 		return
 	}
 
+	bars = candlesutil.NormalizeBarTimes(bars, resolution)
+
 	if len(bars) == 0 {
 		c.JSON(http.StatusOK, gin.H{"s": "no_data"})
 		return

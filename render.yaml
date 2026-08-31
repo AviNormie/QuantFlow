@@ -59,7 +59,7 @@ services:
       - key: MARKET_PUBSUB_CHANNEL
         value: market:updates
       - key: MARKET_DEFAULT_SYMBOLS
-        value: AAPL,MSFT,GOOGL
+        value: AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META
       - key: REDIS_URL
         fromService:
           type: redis

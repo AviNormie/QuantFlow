@@ -54,7 +54,7 @@ func main() {
 	)
 	publisher := repository.NewPublisher(redisClient, cfg.PubSubChannel)
 	ingestion := service.NewIngestionService(cfg, provider, normalizer, priceCache, publisher)
-	marketService := service.NewMarketService(provider, priceCache)
+	marketService := service.NewMarketService(provider, priceCache, ingestion)
 	marketHandler := handler.NewMarketHandler(marketService)
 
 	go ingestion.Run(ctx)

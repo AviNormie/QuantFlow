@@ -20,7 +20,7 @@ type Client struct {
 }
 
 func NewClient() *Client {
-	return &Client{httpClient: &http.Client{Timeout: 15 * time.Second}}
+	return &Client{httpClient: &http.Client{Timeout: 8 * time.Second}}
 }
 
 func (c *Client) GetCandles(ctx context.Context, symbol, resolution string, from, to int64) ([]model.Candle, error) {

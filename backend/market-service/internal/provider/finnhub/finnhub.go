@@ -35,7 +35,7 @@ type Provider struct {
 func NewProvider(apiKey string) *Provider {
 	return &Provider{
 		apiKey: apiKey,
-		client: &http.Client{Timeout: 15 * time.Second},
+		client: &http.Client{Timeout: 5 * time.Second},
 		trades: make(chan provider.RawTrade, 256),
 	}
 }

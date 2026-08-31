@@ -81,6 +81,17 @@ var PopularUSStocks = []model.SymbolInfo{
 	{Symbol: "LCID", Name: "LCID", Description: "Lucid Group Inc", Exchange: "US", Type: "Common Stock", Currency: "USD"},
 }
 
+// FindBySymbol returns a curated symbol entry when the ticker is in the popular list.
+func FindBySymbol(symbol string) (model.SymbolInfo, bool) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	for _, item := range PopularUSStocks {
+		if item.Symbol == symbol {
+			return item, true
+		}
+	}
+	return model.SymbolInfo{}, false
+}
+
 // FilterPopular returns symbols matching query (symbol or description), or all when query is empty.
 func FilterPopular(query string, limit int) []model.SymbolInfo {
 	if limit <= 0 {
