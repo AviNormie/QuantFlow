@@ -37,25 +37,29 @@ function ChartsPageInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const symbol = (
-    searchParams.get("symbol")?.trim().toUpperCase() || DEFAULT_SYMBOL
-  );
-  const setSymbol = useCallback(
-    (next: string) => {
-      const value = next.trim().toUpperCase();
-      if (!value) return;
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("symbol", value);
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    },
-    [pathname, router, searchParams],
-  );
+  const initialSymbol =
+    searchParams.get("symbol")?.trim().toUpperCase() || DEFAULT_SYMBOL;
 
-  const [input, setInput] = useState(symbol);
+  // Local state is source of truth for clicks; URL is for reload persistence.
+  const [symbol, setSymbolState] = useState(initialSymbol);
+  const [input, setInput] = useState(initialSymbol);
   const [resolution, setResolution] = useState<CandleResolution>("D");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  const setSymbol = useCallback(
+    (next: string) => {
+      const value = next.trim().toUpperCase();
+      if (!value) return;
+      setSymbolState(value);
+      setInput(value);
+      const params = new URLSearchParams(window.location.search);
+      params.set("symbol", value);
+      window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+    },
+    [pathname],
+  );
 
   const { lastTrade, status, reconnect } = useStockWebSocket(symbol);
   const tradingViewInterval = useMemo(
@@ -63,9 +67,10 @@ function ChartsPageInner() {
     [resolution],
   );
 
-  useEffect(() => {
-    setInput(symbol);
-  }, [symbol]);
+  const handleSymbolSelect = (next: string) => {
+    const symbolValue = next.trim().toUpperCase();
+    if (symbolValue) setSymbol(symbolValue);
+  };
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -103,14 +108,6 @@ function ChartsPageInner() {
   const livePrice = lastTrade?.price ?? quote?.c ?? null;
   const change = quote?.dp ?? 0;
   const isPositive = change >= 0;
-
-  const handleSymbolSelect = (next: string) => {
-    const symbolValue = next.trim().toUpperCase();
-    if (symbolValue) {
-      setSymbol(symbolValue);
-      setInput(symbolValue);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -184,10 +181,7 @@ function ChartsPageInner() {
                   <button
                     key={item.symbol}
                     type="button"
-                    onClick={() => {
-                      setSymbol(item.symbol);
-                      setInput(item.symbol);
-                    }}
+                    onClick={() => setSymbol(item.symbol)}
                     className={cn(
                       "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition",
                       symbol === item.symbol
