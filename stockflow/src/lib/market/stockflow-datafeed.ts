@@ -1,10 +1,50 @@
-import { getPublicApiUrl, getPublicWebSocketUrl } from "@/lib/env";
+import { getPublicApiUrl } from "@/lib/env";
 import { getAccessToken } from "@/lib/auth";
+import { marketAuthFetch } from "@/lib/market/auth-fetch";
+import { stockFlowWs } from "@/lib/market/ws-client";
 import {
   BarAggregator,
+  barBucketToTradingViewMs,
   tradingViewResolutionToMarket,
   tradingViewResolutionToSeconds,
 } from "@/lib/market/bar-aggregator";
+
+function barTimeMs(unixSec: number, resolution: string): number {
+  return barBucketToTradingViewMs(unixSec, resolution);
+}
+
+function buildSymbolInfo(item: {
+  symbol: string;
+  name: string;
+  description: string;
+  exchange: string;
+  type: string;
+}): LibrarySymbolInfo {
+  return {
+    name: item.symbol,
+    ticker: item.symbol,
+    description: item.description || item.name,
+    type: item.type || "stock",
+    session: "0930-1600",
+    timezone: "America/New_York",
+    exchange: item.exchange || "US",
+    listed_exchange: item.exchange || "US",
+    minmov: 1,
+    pricescale: 100,
+    format: "price",
+    has_intraday: true,
+    has_daily: true,
+    has_weekly_and_monthly: true,
+    has_empty_bars: false,
+    visible_plots_set: "ohlcv",
+    supported_resolutions: CONFIG.supported_resolutions,
+    intraday_multipliers: ["1", "5", "15", "60"],
+    daily_multipliers: ["1"],
+    weekly_multipliers: ["1"],
+    volume_precision: 2,
+    data_status: "streaming",
+  };
+}
 
 type DatafeedConfiguration = {
   supported_resolutions: string[];
@@ -23,12 +63,19 @@ type LibrarySymbolInfo = {
   session: string;
   timezone: string;
   exchange: string;
+  listed_exchange?: string;
   minmov: number;
   pricescale: number;
+  format?: string;
   has_intraday: boolean;
   has_daily: boolean;
   has_weekly_and_monthly: boolean;
+  has_empty_bars?: boolean;
+  visible_plots_set?: string;
   supported_resolutions: string[];
+  intraday_multipliers?: string[];
+  daily_multipliers?: string[];
+  weekly_multipliers?: string[];
   volume_precision: number;
   data_status: string;
 };
@@ -53,12 +100,11 @@ type SubscribeState = {
   resolution: string;
   onTick: (bar: Bar) => void;
   aggregator: BarAggregator;
-  ws: WebSocket | null;
+  offTrade?: () => void;
 };
 
 export type StockFlowDatafeedOptions = {
   apiUrl?: string;
-  wsUrl?: string;
   getAccessToken?: () => string | null;
 };
 
@@ -68,18 +114,16 @@ const CONFIG: DatafeedConfiguration = {
   supports_group_request: false,
   supports_marks: false,
   supports_timescale_marks: false,
-  supports_time: true,
+  supports_time: false,
 };
 
 export class StockFlowDatafeed {
   private apiUrl: string;
-  private wsUrl: string;
   private getToken: () => string | null;
   private subscriptions = new Map<string, SubscribeState>();
 
   constructor(options: StockFlowDatafeedOptions = {}) {
     this.apiUrl = (options.apiUrl ?? getPublicApiUrl()).replace(/\/$/, "");
-    this.wsUrl = options.wsUrl ?? getPublicWebSocketUrl();
     this.getToken = options.getAccessToken ?? getAccessToken;
   }
 
@@ -132,7 +176,9 @@ export class StockFlowDatafeed {
     onResolve: (info: LibrarySymbolInfo) => void,
     onError: (reason: string) => void,
   ) {
-    this.authFetch(`${this.apiUrl}/api/market/symbols/${encodeURIComponent(symbolName)}`)
+    this.authFetch(
+      `${this.apiUrl}/api/market/symbols/${encodeURIComponent(symbolName)}`,
+    )
       .then(async (res) => {
         if (!res.ok) {
           onError("symbol not found");
@@ -145,23 +191,7 @@ export class StockFlowDatafeed {
           exchange: string;
           type: string;
         };
-        onResolve({
-          name: item.symbol,
-          ticker: item.symbol,
-          description: item.description || item.name,
-          type: item.type || "stock",
-          session: "0930-1600",
-          timezone: "America/New_York",
-          exchange: item.exchange || "US",
-          minmov: 1,
-          pricescale: 100,
-          has_intraday: true,
-          has_daily: true,
-          has_weekly_and_monthly: true,
-          supported_resolutions: CONFIG.supported_resolutions,
-          volume_precision: 2,
-          data_status: "streaming",
-        });
+        onResolve(buildSymbolInfo(item));
       })
       .catch(() => onError("resolve failed"));
   }
@@ -200,15 +230,25 @@ export class StockFlowDatafeed {
           onResult([], { noData: true });
           return;
         }
-        const bars = data.t.map((time, i) => ({
-          time: time * 1000,
-          open: data.o![i],
-          high: data.h![i],
-          low: data.l![i],
-          close: data.c![i],
-          volume: data.v?.[i],
-        }));
-        onResult(bars, { noData: false });
+        const bars = data.t
+          .map((time, i) => ({
+            time: barTimeMs(time, resolution),
+            open: data.o![i],
+            high: data.h![i],
+            low: data.l![i],
+            close: data.c![i],
+            volume: data.v?.[i],
+          }))
+          .filter(
+            (bar) =>
+              bar.open > 0 &&
+              bar.high > 0 &&
+              bar.low > 0 &&
+              bar.close > 0 &&
+              bar.high >= bar.low,
+          )
+          .sort((a, b) => a.time - b.time);
+        onResult(bars, { noData: bars.length === 0 });
       })
       .catch(() => onError("failed to load bars"));
   }
@@ -220,48 +260,30 @@ export class StockFlowDatafeed {
     listenerGuid: string,
   ) {
     const seconds = tradingViewResolutionToSeconds(resolution);
+    const symbol = symbolInfo.ticker.toUpperCase();
     const state: SubscribeState = {
-      symbol: symbolInfo.ticker,
+      symbol,
       resolution,
       onTick,
       aggregator: new BarAggregator(seconds),
-      ws: null,
     };
 
-    const base = this.wsUrl.endsWith("/") ? this.wsUrl : `${this.wsUrl}/`;
-    const wsUrl = new URL("/ws", base);
-    const token = this.getToken();
-    if (token) {
-      wsUrl.searchParams.set("token", token);
-    }
+    stockFlowWs.connect();
+    stockFlowWs.subscribe([symbol]);
 
-    const ws = new WebSocket(wsUrl.toString());
-    state.ws = ws;
-
-    ws.onopen = () => {
-      ws.send(
-        JSON.stringify({
-          action: "subscribe",
-          symbols: [symbolInfo.ticker],
-        }),
-      );
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data as string) as {
-          type?: string;
-          data?: Array<{ s: string; p: number; v: number; t: number }>;
-        };
-        if (payload.type !== "trade" || !payload.data?.length) return;
-        const trade = payload.data[payload.data.length - 1];
-        if (trade.s !== symbolInfo.ticker) return;
-        const bar = state.aggregator.onTick(trade.p, trade.v, trade.t);
-        if (bar) onTick(bar);
-      } catch {
-        // ignore malformed payloads
-      }
-    };
+    state.offTrade = stockFlowWs.addTradeListener((trade) => {
+      if (trade.s !== symbol) return;
+      const bucket = state.aggregator.onTick(trade.p, trade.v, trade.t);
+      if (!bucket) return;
+      onTick({
+        time: barBucketToTradingViewMs(bucket.time, resolution),
+        open: bucket.open,
+        high: bucket.high,
+        low: bucket.low,
+        close: bucket.close,
+        volume: bucket.volume,
+      });
+    });
 
     this.subscriptions.set(listenerGuid, state);
   }
@@ -269,18 +291,14 @@ export class StockFlowDatafeed {
   unsubscribeBars(listenerGuid: string) {
     const state = this.subscriptions.get(listenerGuid);
     if (!state) return;
-    if (state.ws) {
-      state.ws.close();
+    if (state.offTrade) {
+      state.offTrade();
     }
+    stockFlowWs.unsubscribe([state.symbol]);
     this.subscriptions.delete(listenerGuid);
   }
 
   private authFetch(url: string) {
-    const headers: Record<string, string> = {};
-    const token = this.getToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-    return fetch(url, { headers });
+    return marketAuthFetch(url);
   }
 }

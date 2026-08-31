@@ -23,11 +23,14 @@ export class BarAggregator {
   }
 
   onTick(price: number, volume: number, timestampMs: number): Bar | null {
-    const bucket = Math.floor(timestampMs / 1000 / this.resolutionSeconds) * this.resolutionSeconds;
+    const tsMs = timestampMs < 1e12 ? timestampMs * 1000 : timestampMs;
+    const bucketSec =
+      Math.floor(tsMs / 1000 / this.resolutionSeconds) *
+      this.resolutionSeconds;
 
-    if (!this.bar || this.bar.time !== bucket) {
+    if (!this.bar || this.bar.time !== bucketSec) {
       this.bar = {
-        time: bucket,
+        time: bucketSec,
         open: price,
         high: price,
         low: price,
@@ -45,6 +48,24 @@ export class BarAggregator {
   }
 }
 
+/** Convert aggregator bucket (unix seconds) to TradingView bar time (ms). */
+export function barBucketToTradingViewMs(
+  bucketSec: number,
+  resolution: string,
+): number {
+  const ms = bucketSec * 1000;
+  if (
+    resolution === "1D" ||
+    resolution === "D" ||
+    resolution === "1W" ||
+    resolution === "W"
+  ) {
+    const d = new Date(ms);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  }
+  return ms;
+}
+
 export function tradingViewResolutionToSeconds(resolution: string): number {
   if (resolution === "1D" || resolution === "D") return 86400;
   if (resolution === "1W" || resolution === "W") return 604800;
@@ -54,8 +75,8 @@ export function tradingViewResolutionToSeconds(resolution: string): number {
 }
 
 export function tradingViewResolutionToMarket(resolution: string): CandleResolution {
-  if (resolution === "1D") return "D";
-  if (resolution === "1W") return "W";
+  if (resolution === "1D" || resolution === "D") return "D";
+  if (resolution === "1W" || resolution === "W") return "W";
   if (resolution === "60") return "60";
   if (resolution === "30") return "30";
   if (resolution === "15") return "15";

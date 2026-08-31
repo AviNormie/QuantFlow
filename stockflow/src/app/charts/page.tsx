@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStockWebSocket } from "@/hooks/use-stock-websocket";
 import { fetchQuote } from "@/lib/market/api";
 import { resolutionToTradingViewInterval } from "@/lib/market/tradingview";
+import { stockFlowWs } from "@/lib/market/ws-client";
 import { POPULAR_SYMBOLS, type CandleResolution } from "@/lib/market/types";
 import { cn, formatChange, formatPrice } from "@/lib/utils";
 
@@ -44,11 +45,13 @@ export default function ChartsPage() {
   useEffect(() => {
     if (!isAuthenticated()) {
       router.replace("/login");
+      return;
     }
+    stockFlowWs.connect();
+    return () => stockFlowWs.release();
   }, [router]);
 
   const loadQuote = useCallback(async () => {
-    setQuoteLoading(true);
     setQuoteError(null);
     try {
       const q = await fetchQuote(symbol);
@@ -62,6 +65,7 @@ export default function ChartsPage() {
   }, [symbol]);
 
   useEffect(() => {
+    setQuoteLoading(true);
     loadQuote();
   }, [loadQuote]);
 

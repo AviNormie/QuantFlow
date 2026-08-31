@@ -155,9 +155,6 @@ export function TradingViewChart({
         try {
           const chart = widget.activeChart();
           chart.applyOverrides(STOCKFLOW_OVERRIDES);
-          const { symbol: currentSymbol, interval: currentInterval } =
-            propsRef.current;
-          chart.setSymbol(currentSymbol, currentInterval);
         } catch {
           // Chart overrides are best-effort.
         }

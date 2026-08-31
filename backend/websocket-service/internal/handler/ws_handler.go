@@ -45,11 +45,6 @@ func (h *WSHandler) Handle(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
-	} else if token != "" {
-		if _, err := jwt.VerifyAccessToken(token); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
 	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -57,6 +52,8 @@ func (h *WSHandler) Handle(c *gin.Context) {
 		log.Printf("websocket upgrade: %v", err)
 		return
 	}
+
+	hub.ConfigureConn(conn)
 
 	client := hub.NewClient(conn, h.hub)
 	h.hub.Register(client)
@@ -77,6 +74,7 @@ func (h *WSHandler) Handle(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		hub.TouchReadDeadline(conn)
 
 		var payload struct {
 			Action  string   `json:"action"`

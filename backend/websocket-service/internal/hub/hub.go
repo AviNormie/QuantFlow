@@ -2,6 +2,7 @@ package hub
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -57,7 +58,7 @@ func NewClient(conn *websocket.Conn, hub *Hub) *Client {
 		conn:    conn,
 		hub:     hub,
 		symbols: make(map[string]bool),
-		send:    make(chan []byte, 64),
+		send:    make(chan []byte, sendBuffer),
 	}
 }
 
@@ -98,9 +99,28 @@ func (c *Client) TrySend(payload []byte) {
 }
 
 func (c *Client) WritePump() {
-	for payload := range c.send {
-		if err := c.conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-			break
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+
+	for {
+		select {
+		case payload, ok := <-c.send:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			if err := c.conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+				return
+			}
+		case <-ticker.C:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
