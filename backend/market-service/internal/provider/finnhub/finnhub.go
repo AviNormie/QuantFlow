@@ -45,6 +45,8 @@ func (p *Provider) Connect(ctx context.Context) error {
 		return fmt.Errorf("FINNHUB_API_KEY is not set")
 	}
 
+	p.Close()
+
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 	conn, _, err := dialer.DialContext(ctx, wsURL+"?token="+p.apiKey, nil)
 	if err != nil {
@@ -53,9 +55,14 @@ func (p *Provider) Connect(ctx context.Context) error {
 
 	p.mu.Lock()
 	p.conn = conn
+	p.trades = make(chan provider.RawTrade, 256)
+	trades := p.trades
 	p.mu.Unlock()
 
-	go p.readLoop(conn)
+	go func() {
+		p.readLoop(conn)
+		close(trades)
+	}()
 	return nil
 }
 
@@ -63,6 +70,11 @@ func (p *Provider) readLoop(conn *websocket.Conn) {
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
+			p.mu.Lock()
+			if p.conn == conn {
+				p.conn = nil
+			}
+			p.mu.Unlock()
 			return
 		}
 
@@ -84,11 +96,15 @@ func (p *Provider) readLoop(conn *websocket.Conn) {
 		}
 
 		for _, trade := range payload.Data {
-			p.trades <- provider.RawTrade{
+			select {
+			case p.trades <- provider.RawTrade{
 				Symbol:    strings.ToUpper(trade.S),
 				Price:     trade.P,
 				Volume:    trade.V,
 				Timestamp: trade.T,
+			}:
+			default:
+				// drop if buffer full
 			}
 		}
 	}
@@ -114,11 +130,12 @@ func (p *Provider) Subscribe(symbols []string) error {
 }
 
 func (p *Provider) Trades() <-chan provider.RawTrade {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.trades
 }
 
 func (p *Provider) Reconnect(ctx context.Context) error {
-	p.Close()
 	return p.Connect(ctx)
 }
 

@@ -54,6 +54,7 @@ class StockFlowWsClient {
 
   private setStatus(status: WsConnectionStatus) {
     this.status = status;
+    console.log("[StockFlow] ws status", status);
     for (const listener of this.statusListeners) {
       listener(status);
     }
@@ -100,6 +101,7 @@ class StockFlowWsClient {
         ...raw,
         t: normalizeTimestampMs(raw.t),
       };
+      console.log("[StockFlow] ws trade", trade);
       for (const listener of this.tradeListeners) {
         listener(trade);
       }

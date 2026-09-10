@@ -20,6 +20,7 @@ export function useStockWebSocket(symbol: string) {
     const offStatus = stockFlowWs.addStatusListener(setStatus);
     const offTrade = stockFlowWs.addTradeListener((trade) => {
       if (trade.s === normalized) {
+        console.log("[StockFlow] header live price", trade);
         setLastTrade({
           symbol: trade.s,
           price: trade.p,

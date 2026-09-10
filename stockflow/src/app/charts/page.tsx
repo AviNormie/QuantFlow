@@ -85,11 +85,13 @@ function ChartsPageInner() {
     setQuoteError(null);
     const cached = getCachedQuote<Quote>(symbol);
     if (cached) {
+      console.log("[StockFlow] quote cache", symbol, cached);
       setQuote(cached);
       setQuoteLoading(false);
     }
     try {
       const q = await fetchQuote(symbol);
+      console.log("[StockFlow] quote fetched", symbol, q);
       setCachedQuote(symbol, q);
       setQuote(q);
     } catch (e) {
@@ -104,6 +106,23 @@ function ChartsPageInner() {
     if (!getCachedQuote(symbol)) setQuoteLoading(true);
     loadQuote();
   }, [loadQuote, symbol]);
+
+  useEffect(() => {
+    if (lastTrade) {
+      console.log("[StockFlow] livePrice changed", {
+        symbol,
+        price: lastTrade.price,
+        timestamp: lastTrade.timestamp,
+      });
+    }
+  }, [lastTrade, symbol]);
+
+  useEffect(() => {
+    console.log("[StockFlow] resolution changed", {
+      resolution,
+      tradingViewInterval,
+    });
+  }, [resolution, tradingViewInterval]);
 
   const livePrice = lastTrade?.price ?? quote?.c ?? null;
   const change = quote?.dp ?? 0;

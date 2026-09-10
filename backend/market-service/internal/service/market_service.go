@@ -148,22 +148,30 @@ func (s *MarketService) GetCandles(ctx context.Context, symbol, resolution strin
 	s.trackSymbol(symbol)
 	from, to = candles.NormalizeRange(from, to, resolution)
 
+	// Prefer Yahoo for candles — Finnhub free tier often returns empty/no access.
+	fallback, yerr := s.yahoo.GetCandles(ctx, symbol, resolution, from, to)
+	if yerr != nil {
+		log.Printf("yahoo candles failed for %s %s: %v", symbol, resolution, yerr)
+	}
+	if len(fallback) > 0 {
+		log.Printf("candles %s %s: yahoo=%d bars from=%d to=%d", symbol, resolution, len(fallback), from, to)
+		return fallback, nil
+	}
+
 	result, err := s.rest.GetCandles(ctx, symbol, resolution, from, to)
 	if err != nil {
 		log.Printf("finnhub candles failed for %s: %v", symbol, err)
 	}
 	if len(result) > 0 {
+		log.Printf("candles %s %s: finnhub=%d bars", symbol, resolution, len(result))
 		return result, nil
 	}
 
-	fallback, yerr := s.yahoo.GetCandles(ctx, symbol, resolution, from, to)
 	if yerr != nil {
-		log.Printf("yahoo candles failed for %s: %v", symbol, yerr)
-		if err != nil {
-			return nil, err
-		}
 		return nil, yerr
 	}
-
-	return fallback, nil
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
 }

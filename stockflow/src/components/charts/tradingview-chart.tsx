@@ -185,10 +185,26 @@ export function TradingViewChart({
     const widget = widgetRef.current;
     if (!widget || !chartReady) return;
 
+    console.log("[StockFlow] chart update", { symbol, interval });
     try {
-      widget.activeChart().setSymbol(symbol, interval);
-    } catch {
-      // Widget may still be initializing.
+      // Widget-level API applies both symbol and resolution correctly.
+      // activeChart().setSymbol(symbol, interval) is wrong — interval is ignored.
+      widget.setSymbol(symbol, interval, () => {
+        console.log("[StockFlow] chart symbol/interval applied", {
+          symbol,
+          interval,
+        });
+      });
+    } catch (err) {
+      console.warn("[StockFlow] widget.setSymbol failed, trying chart API", err);
+      try {
+        const chart = widget.activeChart();
+        void Promise.resolve(chart.setSymbol(symbol)).finally(() => {
+          void Promise.resolve(chart.setResolution(interval));
+        });
+      } catch (fallbackErr) {
+        console.warn("[StockFlow] chart update failed", fallbackErr);
+      }
     }
   }, [symbol, interval, chartReady]);
 

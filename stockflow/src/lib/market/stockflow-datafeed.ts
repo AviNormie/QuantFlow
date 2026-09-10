@@ -213,15 +213,30 @@ export class StockFlowDatafeed {
     const url = `${this.apiUrl}/api/market/candles/${encodeURIComponent(symbolInfo.ticker)}?${params}`;
     const cacheKey = `${symbolInfo.ticker}:${resolution}:${periodParams.from}:${periodParams.to}`;
 
+    console.log("[StockFlow] getBars request", {
+      symbol: symbolInfo.ticker,
+      resolution,
+      marketResolution,
+      from: periodParams.from,
+      to: periodParams.to,
+      firstDataRequest: periodParams.firstDataRequest,
+    });
+
     const cached = getCachedBars<Bar[]>(cacheKey);
-    if (cached) {
-      onResult(cached, { noData: cached.length === 0 });
+    if (cached && cached.length > 0) {
+      console.log("[StockFlow] getBars cache hit", {
+        symbol: symbolInfo.ticker,
+        resolution,
+        bars: cached.length,
+      });
+      onResult(cached, { noData: false });
       return;
     }
 
     this.authFetch(url)
       .then(async (res) => {
         if (!res.ok) {
+          console.warn("[StockFlow] getBars HTTP error", res.status, url);
           onError("failed to load bars");
           return;
         }
@@ -235,6 +250,11 @@ export class StockFlowDatafeed {
           v?: number[];
         };
         if (data.s !== "ok" || !data.t?.length) {
+          console.warn("[StockFlow] getBars no_data", {
+            symbol: symbolInfo.ticker,
+            resolution,
+            status: data.s,
+          });
           onResult([], { noData: true });
           return;
         }
@@ -256,10 +276,22 @@ export class StockFlowDatafeed {
               bar.high >= bar.low,
           )
           .sort((a, b) => a.time - b.time);
-        setCachedBars(cacheKey, bars);
+        console.log("[StockFlow] getBars loaded", {
+          symbol: symbolInfo.ticker,
+          resolution,
+          bars: bars.length,
+          first: bars[0]?.time,
+          last: bars[bars.length - 1]?.time,
+        });
+        if (bars.length > 0) {
+          setCachedBars(cacheKey, bars);
+        }
         onResult(bars, { noData: bars.length === 0 });
       })
-      .catch(() => onError("failed to load bars"));
+      .catch((err) => {
+        console.warn("[StockFlow] getBars failed", err);
+        onError("failed to load bars");
+      });
   }
 
   subscribeBars(
@@ -277,6 +309,8 @@ export class StockFlowDatafeed {
       aggregator: new BarAggregator(seconds),
     };
 
+    console.log("[StockFlow] subscribeBars", { symbol, resolution, listenerGuid });
+
     stockFlowWs.connect();
     stockFlowWs.subscribe([symbol]);
 
@@ -284,14 +318,16 @@ export class StockFlowDatafeed {
       if (trade.s !== symbol) return;
       const bucket = state.aggregator.onTick(trade.p, trade.v, trade.t);
       if (!bucket) return;
-      onTick({
+      const bar = {
         time: barBucketToTradingViewMs(bucket.time, resolution),
         open: bucket.open,
         high: bucket.high,
         low: bucket.low,
         close: bucket.close,
         volume: bucket.volume,
-      });
+      };
+      console.log("[StockFlow] live bar update", { symbol, resolution, bar });
+      onTick(bar);
     });
 
     this.subscriptions.set(listenerGuid, state);

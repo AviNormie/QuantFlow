@@ -26,13 +26,14 @@ func NormalizeRange(from, to int64, resolution string) (int64, int64) {
 func defaultWindow(resolution string) int64 {
 	switch resolution {
 	case "1":
-		return 5 * 24 * 3600
+		// One trading day of 1m bars (~6.5h) + buffer for pre/post market.
+		return 2 * 24 * 3600
 	case "5":
-		return 10 * 24 * 3600
+		return 5 * 24 * 3600
 	case "15", "30":
-		return 30 * 24 * 3600
+		return 14 * 24 * 3600
 	case "60":
-		return 90 * 24 * 3600
+		return 30 * 24 * 3600
 	case "W":
 		return 5 * 365 * 24 * 3600
 	default:
@@ -43,6 +44,7 @@ func defaultWindow(resolution string) int64 {
 func maxWindow(resolution string) int64 {
 	switch resolution {
 	case "1":
+		// Yahoo only keeps ~7 days of 1m data.
 		return 7 * 24 * 3600
 	case "5":
 		return 30 * 24 * 3600
@@ -53,6 +55,6 @@ func maxWindow(resolution string) int64 {
 	case "W":
 		return 10 * 365 * 24 * 3600
 	default:
-		return 365 * 24 * 3600
+		return 2 * 365 * 24 * 3600
 	}
 }

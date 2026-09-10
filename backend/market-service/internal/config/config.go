@@ -17,7 +17,7 @@ type Config struct {
 }
 
 func Load() Config {
-	symbols := strings.Split(envOr("MARKET_DEFAULT_SYMBOLS", "AAPL,MSFT,GOOGL"), ",")
+	symbols := strings.Split(envOr("MARKET_DEFAULT_SYMBOLS", "AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META"), ",")
 	clean := make([]string, 0, len(symbols))
 	for _, s := range symbols {
 		if trimmed := strings.TrimSpace(strings.ToUpper(s)); trimmed != "" {
